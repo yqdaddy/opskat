@@ -7,6 +7,7 @@ import {ai} from '../models';
 import {backup_svc} from '../models';
 import {ssh_key_entity} from '../models';
 import {import_svc} from '../models';
+import {sftp_svc} from '../models';
 
 export function CancelGitHubAuth():Promise<void>;
 
@@ -40,6 +41,8 @@ export function GetAsset(arg1:number):Promise<asset_entity.Asset>;
 
 export function GetGitHubUser(arg1:string):Promise<backup_svc.GitHubUser>;
 
+export function GetInitContext(arg1:number,arg2:number):Promise<string>;
+
 export function GetLanguage():Promise<string>;
 
 export function GetSSHKeyPublicKey(arg1:number):Promise<string>;
@@ -68,13 +71,19 @@ export function LoadCredential(arg1:string):Promise<string>;
 
 export function PreviewTabbyConfig():Promise<import_svc.PreviewResult>;
 
+export function ResetAISession():Promise<void>;
+
 export function ResizeSSH(arg1:string,arg2:number,arg3:number):Promise<void>;
+
+export function RespondPermission(arg1:string,arg2:string):Promise<void>;
 
 export function SFTPCancelTransfer(arg1:string):Promise<void>;
 
 export function SFTPDownload(arg1:string,arg2:string):Promise<string>;
 
 export function SFTPDownloadDir(arg1:string,arg2:string):Promise<string>;
+
+export function SFTPListDir(arg1:string,arg2:string):Promise<Array<sftp_svc.FileEntry>>;
 
 export function SFTPUpload(arg1:string,arg2:string):Promise<string>;
 

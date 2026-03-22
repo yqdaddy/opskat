@@ -37,16 +37,19 @@ type App struct {
 	sshManager       *ssh_svc.Manager
 	sftpService      *sftp_svc.Service
 	aiAgent          *ai.Agent
+	aiProvider       ai.Provider // 保留 provider 引用，用于权限回调注入
 	githubAuthCancel context.CancelFunc
+	permissionChan   chan ai.PermissionResponse // 前端权限响应 channel
 }
 
 // NewApp 创建App实例
 func NewApp() *App {
 	mgr := ssh_svc.NewManager()
 	return &App{
-		lang:        "zh-cn",
-		sshManager:  mgr,
-		sftpService: sftp_svc.NewService(mgr),
+		lang:           "zh-cn",
+		sshManager:     mgr,
+		sftpService:    sftp_svc.NewService(mgr),
+		permissionChan: make(chan ai.PermissionResponse, 1),
 	}
 }
 
@@ -58,7 +61,15 @@ func (a *App) SetAIProvider(providerType, apiBase, apiKey, model string) {
 		provider = ai.NewOpenAIProvider("OpenAI Compatible", apiBase, apiKey, model)
 	case "local_cli":
 		// apiBase 作为 CLI 路径，model 作为 CLI 类型
-		provider = ai.NewLocalCLIProvider("Local CLI", apiBase, model)
+		cliProvider := ai.NewLocalCLIProvider("Local CLI", apiBase, model)
+		// 注入权限确认回调：转发到前端，等待用户响应
+		cliProvider.OnPermissionRequest = func(req ai.PermissionRequest) ai.PermissionResponse {
+			wailsRuntime.EventsEmit(a.ctx, "ai:permission", req)
+			return <-a.permissionChan
+		}
+		a.aiProvider = cliProvider
+		a.aiAgent = ai.NewAgent(cliProvider, nil)
+		return
 	default:
 		provider = ai.NewOpenAIProvider(providerType, apiBase, apiKey, model)
 	}
@@ -302,6 +313,11 @@ func (a *App) DisconnectSSH(sessionID string) {
 }
 
 // --- SFTP 文件传输 ---
+
+// SFTPListDir 列出远程目录内容
+func (a *App) SFTPListDir(sessionID, dirPath string) ([]sftp_svc.FileEntry, error) {
+	return a.sftpService.ListDir(sessionID, dirPath)
+}
 
 // SFTPUpload 上传文件：弹出本地文件选择 → 上传到 remotePath
 func (a *App) SFTPUpload(sessionID, remotePath string) (string, error) {
@@ -603,6 +619,89 @@ func (a *App) SendAIMessage(conversationID string, messages []ai.Message) error 
 // DetectLocalCLIs 检测本地 AI CLI 工具
 func (a *App) DetectLocalCLIs() []ai.CLIInfo {
 	return ai.DetectLocalCLIs()
+}
+
+// RespondPermission 前端响应权限确认请求
+func (a *App) RespondPermission(behavior, message string) {
+	select {
+	case a.permissionChan <- ai.PermissionResponse{Behavior: behavior, Message: message}:
+	default:
+	}
+}
+
+// ResetAISession 重置 AI 会话（前端清空聊天时调用）
+func (a *App) ResetAISession() {
+	if p, ok := a.aiProvider.(*ai.LocalCLIProvider); ok {
+		p.ResetSession()
+	}
+}
+
+// GetInitContext 获取 /init 命令的资产上下文信息
+func (a *App) GetInitContext(assetID int64, groupID int64) (string, error) {
+	ctx := a.langCtx()
+	var sb strings.Builder
+
+	if assetID > 0 {
+		asset, err := asset_svc.Asset().Get(ctx, assetID)
+		if err != nil {
+			return "", fmt.Errorf("获取资产失败: %w", err)
+		}
+		sb.WriteString("=== 资产初始化分析 ===\n\n")
+		sb.WriteString(a.formatAssetContext(asset))
+	} else if groupID > 0 {
+		group, err := group_repo.Group().Find(ctx, groupID)
+		if err != nil {
+			return "", fmt.Errorf("获取分组失败: %w", err)
+		}
+		assets, err := asset_svc.Asset().List(ctx, "", groupID)
+		if err != nil {
+			return "", fmt.Errorf("获取资产列表失败: %w", err)
+		}
+		sb.WriteString(fmt.Sprintf("=== 分组「%s」初始化分析 ===\n\n", group.Name))
+		if len(assets) == 0 {
+			sb.WriteString("该分组下没有资产。\n")
+		}
+		for _, asset := range assets {
+			sb.WriteString(a.formatAssetContext(asset))
+			sb.WriteString("\n")
+		}
+	} else {
+		return "", fmt.Errorf("请选择一个资产或分组")
+	}
+
+	sb.WriteString("\n请分析以上服务器环境，执行以下发现命令：\n")
+	sb.WriteString("1. uname -a（操作系统信息）\n")
+	sb.WriteString("2. cat /etc/os-release（发行版信息）\n")
+	sb.WriteString("3. hostname（主机名）\n")
+	sb.WriteString("4. df -h（磁盘使用）\n")
+	sb.WriteString("5. free -h（内存使用）\n")
+	sb.WriteString("6. nproc（CPU核心数）\n")
+	sb.WriteString("7. ip addr 或 ifconfig（网络接口）\n")
+	sb.WriteString("8. docker ps 2>/dev/null（Docker容器）\n")
+	sb.WriteString("9. systemctl list-units --type=service --state=running 2>/dev/null | head -20（运行中的服务）\n")
+
+	return sb.String(), nil
+}
+
+// formatAssetContext 格式化单个资产的上下文信息
+func (a *App) formatAssetContext(asset *asset_entity.Asset) string {
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("- 名称: %s (ID: %d)\n", asset.Name, asset.ID))
+	sb.WriteString(fmt.Sprintf("  类型: %s\n", asset.Type))
+
+	if asset.IsSSH() {
+		cfg, err := asset.GetSSHConfig()
+		if err == nil {
+			sb.WriteString(fmt.Sprintf("  地址: %s:%d\n", cfg.Host, cfg.Port))
+			sb.WriteString(fmt.Sprintf("  用户: %s\n", cfg.Username))
+			sb.WriteString(fmt.Sprintf("  认证: %s\n", cfg.AuthType))
+		}
+	}
+
+	if asset.Description != "" {
+		sb.WriteString(fmt.Sprintf("  描述: %s\n", asset.Description))
+	}
+	return sb.String()
 }
 
 // --- 凭证操作 ---

@@ -1,19 +1,39 @@
 package ai
 
 import (
-	"bufio"
 	"context"
 	"encoding/json"
 	"fmt"
 	"os/exec"
 	"strings"
+	"sync"
 )
+
+// PermissionRequest CLI 工具权限请求
+type PermissionRequest struct {
+	ToolName string         `json:"tool_name"`
+	Input    map[string]any `json:"input"`
+}
+
+// PermissionResponse 权限响应
+type PermissionResponse struct {
+	Behavior string `json:"behavior"` // "allow" | "deny"
+	Message  string `json:"message"`  // deny 原因
+}
 
 // LocalCLIProvider 本地 CLI provider（claude/codex）
 type LocalCLIProvider struct {
-	name    string
-	cliPath string // CLI 可执行文件路径
-	cliType string // "claude" 或 "codex"
+	name      string
+	cliPath   string // CLI 可执行文件路径
+	cliType   string // "claude" 或 "codex"
+	sessionID string // Claude session ID，跨调用保持
+	mu        sync.Mutex
+
+	// Codex app-server 实例
+	codexServer *CodexAppServer
+
+	// OnPermissionRequest 权限确认回调，由外部注入
+	OnPermissionRequest func(req PermissionRequest) PermissionResponse
 }
 
 // NewLocalCLIProvider 创建本地 CLI provider
@@ -28,45 +48,162 @@ func NewLocalCLIProvider(name, cliPath, cliType string) *LocalCLIProvider {
 func (p *LocalCLIProvider) Name() string { return p.name }
 
 func (p *LocalCLIProvider) Chat(ctx context.Context, messages []Message, _ []Tool) (<-chan StreamEvent, error) {
-	// 将消息转换为单个 prompt
-	prompt := messagesToPrompt(messages)
-
-	var cmd *exec.Cmd
 	switch p.cliType {
 	case "claude":
-		cmd = exec.CommandContext(ctx, p.cliPath, "--print", "--no-input", prompt)
+		return p.chatClaude(ctx, messages)
 	case "codex":
-		cmd = exec.CommandContext(ctx, p.cliPath, "--quiet", prompt)
+		return p.chatCodex(ctx, messages)
 	default:
 		return nil, fmt.Errorf("不支持的 CLI 类型: %s", p.cliType)
 	}
+}
 
-	stdout, err := cmd.StdoutPipe()
+// chatClaude 使用 Claude CLI stream-json 模式
+func (p *LocalCLIProvider) chatClaude(ctx context.Context, messages []Message) (<-chan StreamEvent, error) {
+	// 提取最新 user 消息和 system prompt
+	userMsg, systemPrompt := extractLastUserAndSystem(messages)
+	if userMsg == "" {
+		return nil, fmt.Errorf("没有用户消息")
+	}
+
+	// 构建 CLI 参数
+	args := p.buildClaudeArgs(userMsg, systemPrompt)
+
+	// 启动 CLI 进程
+	proc, err := StartCLIProcess(ctx, p.cliPath, args)
 	if err != nil {
-		return nil, fmt.Errorf("获取 stdout 失败: %w", err)
+		return nil, err
 	}
 
-	if err := cmd.Start(); err != nil {
-		return nil, fmt.Errorf("启动 CLI 失败: %w", err)
-	}
-
-	ch := make(chan StreamEvent, 32)
+	ch := make(chan StreamEvent, 64)
 	go func() {
 		defer close(ch)
-		scanner := bufio.NewScanner(stdout)
-		scanner.Buffer(make([]byte, 1024*1024), 1024*1024)
-		for scanner.Scan() {
-			line := scanner.Text()
-			ch <- StreamEvent{Type: "content", Content: line + "\n"}
+		defer proc.Stop()
+
+		parser := NewClaudeEventParser()
+		lines := proc.ReadLines(ctx)
+
+		for line := range lines {
+			events, done := parser.ParseLine(line)
+			for _, ev := range events {
+				ch <- ev
+			}
+			if done {
+				// 更新 sessionID 用于续话
+				if parser.SessionID != "" {
+					p.mu.Lock()
+					p.sessionID = parser.SessionID
+					p.mu.Unlock()
+				}
+				ch <- StreamEvent{Type: "done"}
+				return
+			}
 		}
-		cmd.Wait()
+
+		// 进程结束但没收到 result 事件
+		if parser.SessionID != "" {
+			p.mu.Lock()
+			p.sessionID = parser.SessionID
+			p.mu.Unlock()
+		}
+		proc.Wait()
 		ch <- StreamEvent{Type: "done"}
 	}()
 
 	return ch, nil
 }
 
-// messagesToPrompt 将消息列表转换为文本 prompt
+// buildClaudeArgs 构建 Claude CLI 参数
+func (p *LocalCLIProvider) buildClaudeArgs(userMsg, systemPrompt string) []string {
+	p.mu.Lock()
+	sessionID := p.sessionID
+	p.mu.Unlock()
+
+	args := []string{
+		"-p", userMsg,
+		"--output-format", "stream-json",
+	}
+
+	if sessionID != "" {
+		// 续话模式
+		args = append(args, "-r", sessionID)
+	} else {
+		// 首次调用，添加系统提示
+		if systemPrompt != "" {
+			args = append(args, "--append-system-prompt", systemPrompt)
+		}
+		// 首次跳过权限（后续将替换为权限确认流程）
+		args = append(args, "--dangerously-skip-permissions")
+	}
+
+	return args
+}
+
+// chatCodex 使用 codex exec --json 模式
+func (p *LocalCLIProvider) chatCodex(ctx context.Context, messages []Message) (<-chan StreamEvent, error) {
+	// codex exec 不支持 session resume，每次需要完整 prompt
+	prompt := messagesToPrompt(messages)
+
+	proc, err := StartCLIProcess(ctx, p.cliPath, []string{"exec", "--json", prompt})
+	if err != nil {
+		return nil, err
+	}
+
+	ch := make(chan StreamEvent, 64)
+	go func() {
+		defer close(ch)
+		defer proc.Stop()
+
+		parser := NewCodexEventParser()
+		lines := proc.ReadLines(ctx)
+
+		for line := range lines {
+			events, done := parser.ParseLine(line)
+			for _, ev := range events {
+				ch <- ev
+			}
+			if done {
+				ch <- StreamEvent{Type: "done"}
+				return
+			}
+		}
+
+		proc.Wait()
+		ch <- StreamEvent{Type: "done"}
+	}()
+
+	return ch, nil
+}
+
+// extractLastUserAndSystem 提取最新的 user 消息和 system prompt
+func extractLastUserAndSystem(messages []Message) (userMsg, systemPrompt string) {
+	for _, msg := range messages {
+		if msg.Role == RoleSystem {
+			systemPrompt = msg.Content
+		}
+	}
+	// 从后往前找最新的 user 消息
+	for i := len(messages) - 1; i >= 0; i-- {
+		if messages[i].Role == RoleUser {
+			userMsg = messages[i].Content
+			break
+		}
+	}
+	return
+}
+
+// ResetSession 重置会话（用户清空聊天时调用）
+func (p *LocalCLIProvider) ResetSession() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.sessionID = ""
+	if p.codexServer != nil {
+		p.codexServer.Stop()
+		p.codexServer = nil
+	}
+}
+
+// messagesToPrompt 将消息列表转换为文本 prompt（Codex 回退用）
 func messagesToPrompt(messages []Message) string {
 	var parts []string
 	for _, msg := range messages {
@@ -91,7 +228,7 @@ func DetectLocalCLIs() []CLIInfo {
 	clis := []struct {
 		name    string
 		cliType string
-		cmds    []string // 候选可执行文件名
+		cmds    []string
 	}{
 		{"Claude Code", "claude", []string{"claude"}},
 		{"Codex", "codex", []string{"codex"}},
@@ -130,7 +267,6 @@ func getCLIVersion(path string) string {
 		return "unknown"
 	}
 	version := strings.TrimSpace(string(out))
-	// 取第一行
 	if idx := strings.IndexByte(version, '\n'); idx > 0 {
 		version = version[:idx]
 	}

@@ -200,7 +200,14 @@
     "title": "AI Assistant",
     "placeholder": "Type a message...",
     "send": "Send",
-    "notConfigured": "Please configure AI Provider in Settings"
+    "notConfigured": "Please configure AI Provider in Settings",
+    "initNoSelection": "Please select an asset or group from the sidebar first",
+    "initAnalyzing": "Analyzing server environment...",
+    "initError": "Failed to get asset information",
+    "permissionTitle": "Tool Execution Approval",
+    "permissionAllow": "Allow",
+    "permissionAllowAll": "Allow All",
+    "permissionDeny": "Deny"
   },
   "shortcut": {
     "title": "Shortcuts",
@@ -291,6 +298,14 @@
     "cancelTransfer": "Cancel transfer",
     "clear": "Clear",
     "noActiveSession": "Please connect an SSH session first",
-    "activeTransfers": "{{count}} active transfer(s)"
+    "activeTransfers": "{{count}} active transfer(s)",
+    "fileBrowser": "File Browser",
+    "parentDir": "Parent Directory",
+    "home": "Home",
+    "empty": "Empty directory",
+    "loadError": "Failed to load",
+    "retry": "Retry",
+    "selectUploadTarget": "Select upload destination",
+    "selectDownloadFile": "Select file to download"
   }
 }

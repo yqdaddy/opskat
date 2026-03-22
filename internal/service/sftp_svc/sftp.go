@@ -77,6 +77,48 @@ func (s *Service) getSFTPClient(sessionID string) (*sftp.Client, error) {
 	return client, nil
 }
 
+// FileEntry 远程文件/目录条目
+type FileEntry struct {
+	Name    string `json:"name"`
+	Size    int64  `json:"size"`
+	IsDir   bool   `json:"isDir"`
+	ModTime int64  `json:"modTime"` // Unix timestamp
+}
+
+// ListDir 列出远程目录内容
+func (s *Service) ListDir(sessionID, dirPath string) ([]FileEntry, error) {
+	sftpClient, err := s.getSFTPClient(sessionID)
+	if err != nil {
+		return nil, err
+	}
+
+	infos, err := sftpClient.ReadDir(dirPath)
+	if err != nil {
+		return nil, fmt.Errorf("读取远程目录失败: %w", err)
+	}
+
+	// 排序：目录在前，文件在后，各自按名称排序
+	var dirs, files []FileEntry
+	for _, info := range infos {
+		entry := FileEntry{
+			Name:    info.Name(),
+			Size:    info.Size(),
+			IsDir:   info.IsDir(),
+			ModTime: info.ModTime().Unix(),
+		}
+		if info.IsDir() {
+			dirs = append(dirs, entry)
+		} else {
+			files = append(files, entry)
+		}
+	}
+
+	result := make([]FileEntry, 0, len(dirs)+len(files))
+	result = append(result, dirs...)
+	result = append(result, files...)
+	return result, nil
+}
+
 // Upload 上传单个文件
 func (s *Service) Upload(ctx context.Context, transferID, sessionID, localPath, remotePath string, onProgress func(TransferProgress)) error {
 	ctx, cancel := context.WithCancel(ctx)

@@ -399,6 +399,29 @@ export namespace main {
 
 }
 
+export namespace sftp_svc {
+	
+	export class FileEntry {
+	    name: string;
+	    size: number;
+	    isDir: boolean;
+	    modTime: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new FileEntry(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.size = source["size"];
+	        this.isDir = source["isDir"];
+	        this.modTime = source["modTime"];
+	    }
+	}
+
+}
+
 export namespace ssh_key_entity {
 	
 	export class SSHKey {

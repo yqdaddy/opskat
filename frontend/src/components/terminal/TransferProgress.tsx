@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { X, Loader2, CheckCircle2, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -12,7 +13,8 @@ function formatBytes(bytes: number): string {
 
 function TransferItem({ transfer }: { transfer: SFTPTransfer }) {
   const { t } = useTranslation();
-  const { cancelTransfer, clearTransfer } = useSFTPStore();
+  const cancelTransfer = useSFTPStore((s) => s.cancelTransfer);
+  const clearTransfer = useSFTPStore((s) => s.clearTransfer);
 
   const percent =
     transfer.bytesTotal > 0
@@ -67,6 +69,14 @@ function TransferItem({ transfer }: { transfer: SFTPTransfer }) {
             })}
           </span>
         )}
+        {transfer.status === "error" && transfer.error && (
+          <span
+            className="text-destructive truncate block"
+            title={transfer.error}
+          >
+            {transfer.error}
+          </span>
+        )}
       </div>
 
       {transfer.status === "active" ? (
@@ -95,8 +105,10 @@ function TransferItem({ transfer }: { transfer: SFTPTransfer }) {
 }
 
 export function TransferProgress({ sessionId }: { sessionId: string }) {
-  const transfers = useSFTPStore((s) =>
-    Object.values(s.transfers).filter((t) => t.sessionId === sessionId)
+  const allTransfers = useSFTPStore((s) => s.transfers);
+  const transfers = useMemo(
+    () => Object.values(allTransfers).filter((t) => t.sessionId === sessionId),
+    [allTransfers, sessionId]
   );
 
   if (transfers.length === 0) return null;

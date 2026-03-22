@@ -66,6 +66,10 @@ export function GetGitHubUser(arg1) {
   return window['go']['main']['App']['GetGitHubUser'](arg1);
 }
 
+export function GetInitContext(arg1, arg2) {
+  return window['go']['main']['App']['GetInitContext'](arg1, arg2);
+}
+
 export function GetLanguage() {
   return window['go']['main']['App']['GetLanguage']();
 }
@@ -122,8 +126,16 @@ export function PreviewTabbyConfig() {
   return window['go']['main']['App']['PreviewTabbyConfig']();
 }
 
+export function ResetAISession() {
+  return window['go']['main']['App']['ResetAISession']();
+}
+
 export function ResizeSSH(arg1, arg2, arg3) {
   return window['go']['main']['App']['ResizeSSH'](arg1, arg2, arg3);
+}
+
+export function RespondPermission(arg1, arg2) {
+  return window['go']['main']['App']['RespondPermission'](arg1, arg2);
 }
 
 export function SFTPCancelTransfer(arg1) {
@@ -136,6 +148,10 @@ export function SFTPDownload(arg1, arg2) {
 
 export function SFTPDownloadDir(arg1, arg2) {
   return window['go']['main']['App']['SFTPDownloadDir'](arg1, arg2);
+}
+
+export function SFTPListDir(arg1, arg2) {
+  return window['go']['main']['App']['SFTPListDir'](arg1, arg2);
 }
 
 export function SFTPUpload(arg1, arg2) {

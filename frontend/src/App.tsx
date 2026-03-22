@@ -10,6 +10,7 @@ import { AIPanel } from "@/components/layout/AIPanel";
 import { WindowControls } from "@/components/layout/WindowControls";
 import { AssetForm } from "@/components/asset/AssetForm";
 import { GroupDialog } from "@/components/asset/GroupDialog";
+import { PermissionDialog } from "@/components/ai/PermissionDialog";
 
 import { useAssetStore } from "@/stores/assetStore";
 import { useTerminalStore } from "@/stores/terminalStore";
@@ -156,6 +157,7 @@ const { assets, selectedAssetId, selectAsset, deleteAsset, getAsset, getAssetPat
           onOpenChange={setGroupDialogOpen}
           editGroup={editingGroup}
         />
+<PermissionDialog />
 <Toaster richColors />
       </TooltipProvider>
     </ThemeProvider>

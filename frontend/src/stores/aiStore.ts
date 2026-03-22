@@ -3,9 +3,13 @@ import {
   SendAIMessage,
   SetAIProvider,
   DetectLocalCLIs,
+  GetInitContext,
+  ResetAISession,
 } from "../../wailsjs/go/main/App";
 import { ai } from "../../wailsjs/go/models";
 import { EventsOn, EventsOff } from "../../wailsjs/runtime/runtime";
+import { useAssetStore } from "./assetStore";
+import i18n from "../i18n";
 
 export interface ChatMessage {
   role: "user" | "assistant" | "tool";
@@ -50,8 +54,50 @@ export const useAIStore = create<AIState>((set, get) => ({
     const state = get();
     if (state.sending) return;
 
-    // 添加用户消息
-    const userMsg: ChatMessage = { role: "user", content };
+    let actualContent = content;
+
+    // 拦截 /init 命令
+    if (content.trim() === "/init") {
+      const { selectedAssetId, selectedGroupId } = useAssetStore.getState();
+      if (!selectedAssetId && !selectedGroupId) {
+        // 添加提示消息
+        set({
+          messages: [
+            ...state.messages,
+            { role: "user", content: "/init" },
+            {
+              role: "assistant",
+              content: i18n.t("ai.initNoSelection"),
+              streaming: false,
+            },
+          ],
+        });
+        return;
+      }
+      try {
+        actualContent = await GetInitContext(
+          selectedAssetId || 0,
+          selectedGroupId || 0
+        );
+      } catch (e) {
+        set({
+          messages: [
+            ...state.messages,
+            { role: "user", content: "/init" },
+            {
+              role: "assistant",
+              content: `${i18n.t("ai.initError")}: ${e}`,
+              streaming: false,
+            },
+          ],
+        });
+        return;
+      }
+    }
+
+    // 添加用户消息（UI 显示原始输入）
+    const displayContent = content.trim() === "/init" ? "/init" : content;
+    const userMsg: ChatMessage = { role: "user", content: displayContent };
     const newMessages = [...state.messages, userMsg];
     set({ messages: newMessages, sending: true });
 
@@ -114,11 +160,14 @@ export const useAIStore = create<AIState>((set, get) => ({
 
     eventCleanup = () => EventsOff(eventName);
 
-    // 转换为后端消息格式
-    const apiMessages = newMessages.map((m) => new ai.Message({
-      role: m.role,
-      content: m.content,
-    }));
+    // 转换为后端消息格式（/init 时发送实际上下文而非 "/init"）
+    const apiMessages = newMessages.map((m, idx) => {
+      const msgContent = idx === newMessages.length - 1 ? actualContent : m.content;
+      return new ai.Message({
+        role: m.role,
+        content: msgContent,
+      });
+    });
 
     try {
       await SendAIMessage(convId, apiMessages);
@@ -139,5 +188,16 @@ export const useAIStore = create<AIState>((set, get) => ({
       eventCleanup();
       eventCleanup = null;
     }
+    // 重置后端会话
+    ResetAISession().catch(() => {});
   },
 }));
+
+// 应用启动时自动恢复 AI 配置
+const providerType = localStorage.getItem("ai_provider_type");
+if (providerType) {
+  const apiBase = localStorage.getItem("ai_api_base") || "";
+  const apiKey = localStorage.getItem("ai_api_key") || "";
+  const model = localStorage.getItem("ai_model") || "";
+  useAIStore.getState().configure(providerType, apiBase, apiKey, model).catch(() => {});
+}

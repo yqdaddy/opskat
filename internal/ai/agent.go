@@ -75,7 +75,11 @@ func (a *Agent) Chat(ctx context.Context, messages []Message, onEvent func(Strea
 		}
 		messages = append(messages, assistantMsg)
 
-		// 执行每个 tool 调用
+		// 执行每个 tool 调用（Local CLI 模式下 executor 为 nil，不执行）
+		if a.executor == nil {
+			onEvent(StreamEvent{Type: "done"})
+			return nil
+		}
 		for _, tc := range toolCalls {
 			result, err := a.executor.Execute(ctx, tc.Function.Name, tc.Function.Arguments)
 			if err != nil {
