@@ -1,7 +1,7 @@
 import { useState, useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import { useWailsEvent } from "@/hooks/useWailsEvent";
-import { RespondPermission } from "../../../wailsjs/go/main/App";
+import { RespondPermission } from "../../../wailsjs/go/app/App";
 import {
   AlertDialog,
   AlertDialogContent,

@@ -1,0 +1,163 @@
+import { useTranslation } from "react-i18next";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
+import { AssetSelect } from "@/components/asset/AssetSelect";
+import { PasswordSourceField } from "@/components/asset/PasswordSourceField";
+import { credential_entity } from "../../../wailsjs/go/models";
+
+export interface DatabaseConfigSectionProps {
+  host: string;
+  setHost: (v: string) => void;
+  port: number;
+  setPort: (v: number) => void;
+  username: string;
+  setUsername: (v: string) => void;
+  driver: string;
+  database: string;
+  setDatabase: (v: string) => void;
+  sslMode: string;
+  setSslMode: (v: string) => void;
+  readOnly: boolean;
+  setReadOnly: (v: boolean) => void;
+  dbSshAssetId: number;
+  setDbSshAssetId: (v: number) => void;
+  params: string;
+  setParams: (v: string) => void;
+  // Password fields
+  password: string;
+  setPassword: (v: string) => void;
+  encryptedPassword: string;
+  passwordSource: "inline" | "managed";
+  setPasswordSource: (v: "inline" | "managed") => void;
+  passwordCredentialId: number;
+  setPasswordCredentialId: (v: number) => void;
+  managedPasswords: credential_entity.Credential[];
+}
+
+export function DatabaseConfigSection({
+  host,
+  setHost,
+  port,
+  setPort,
+  username,
+  setUsername,
+  driver,
+  database,
+  setDatabase,
+  sslMode,
+  setSslMode,
+  readOnly,
+  setReadOnly,
+  dbSshAssetId,
+  setDbSshAssetId,
+  params,
+  setParams,
+  password,
+  setPassword,
+  encryptedPassword,
+  passwordSource,
+  setPasswordSource,
+  passwordCredentialId,
+  setPasswordCredentialId,
+  managedPasswords,
+}: DatabaseConfigSectionProps) {
+  const { t } = useTranslation();
+
+  return (
+    <>
+      {/* Host + Port */}
+      <div className="grid gap-2">
+        <Label>{t("asset.host")}</Label>
+        <div className="flex gap-2">
+          <Input
+            className="flex-1"
+            value={host}
+            onChange={(e) => setHost(e.target.value)}
+            placeholder="192.168.1.1"
+          />
+          <Input
+            className="w-[80px] shrink-0 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+            type="number"
+            value={port}
+            onChange={(e) => setPort(Number(e.target.value))}
+          />
+        </div>
+      </div>
+
+      {/* Username */}
+      <div className="grid gap-2">
+        <Label>{t("asset.username")}</Label>
+        <Input value={username} onChange={(e) => setUsername(e.target.value)} />
+      </div>
+
+      {/* Password */}
+      <PasswordSourceField
+        source={passwordSource}
+        onSourceChange={setPasswordSource}
+        password={password}
+        onPasswordChange={setPassword}
+        credentialId={passwordCredentialId}
+        onCredentialIdChange={setPasswordCredentialId}
+        managedPasswords={managedPasswords}
+        hasExistingPassword={!!encryptedPassword}
+      />
+
+      {/* Database name */}
+      <div className="grid gap-2">
+        <Label>{t("asset.database")}</Label>
+        <Input
+          value={database}
+          onChange={(e) => setDatabase(e.target.value)}
+          placeholder={t("asset.databasePlaceholder")}
+        />
+      </div>
+
+      {/* SSL Mode (PostgreSQL only) */}
+      {driver === "postgresql" && (
+        <div className="grid gap-2">
+          <Label>{t("asset.sslMode")}</Label>
+          <Select value={sslMode} onValueChange={setSslMode}>
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="disable">disable</SelectItem>
+              <SelectItem value="require">require</SelectItem>
+              <SelectItem value="verify-ca">verify-ca</SelectItem>
+              <SelectItem value="verify-full">verify-full</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      )}
+
+      {/* Params */}
+      <div className="grid gap-2">
+        <Label>{t("asset.params")}</Label>
+        <Input
+          value={params}
+          onChange={(e) => setParams(e.target.value)}
+          placeholder={t("asset.paramsPlaceholder")}
+        />
+      </div>
+
+      {/* Read Only */}
+      <div className="flex items-center justify-between">
+        <Label>{t("asset.readOnly")}</Label>
+        <Switch checked={readOnly} onCheckedChange={setReadOnly} />
+      </div>
+
+      {/* SSH Tunnel */}
+      <div className="grid gap-2">
+        <Label>{t("asset.sshTunnel")}</Label>
+        <AssetSelect
+          value={dbSshAssetId}
+          onValueChange={setDbSshAssetId}
+          filterType="ssh"
+          placeholder={t("asset.sshTunnelNone")}
+        />
+      </div>
+    </>
+  );
+}

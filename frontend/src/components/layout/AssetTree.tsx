@@ -46,7 +46,7 @@ import { pinyinMatch } from "@/lib/pinyin";
 import { useAssetStore } from "@/stores/assetStore";
 import { useTerminalStore } from "@/stores/terminalStore";
 import { useActiveAssetIds } from "@/hooks/useActiveAssetIds";
-import { MoveAsset, MoveGroup } from "../../../wailsjs/go/main/App";
+import { MoveAsset, MoveGroup } from "../../../wailsjs/go/app/App";
 import { asset_entity, group_entity } from "../../../wailsjs/go/models";
 
 interface AssetTreeProps {

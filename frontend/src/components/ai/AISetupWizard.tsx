@@ -11,7 +11,7 @@ import {
   InstallSkills,
   InstallOpsctl,
   GetOpsctlInstallDir,
-} from "../../../wailsjs/go/main/App";
+} from "../../../wailsjs/go/app/App";
 import { Bot, Terminal, Check, Loader2, ArrowRight, Download, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 

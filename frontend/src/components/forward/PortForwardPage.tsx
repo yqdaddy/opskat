@@ -15,8 +15,8 @@ import {
   DeleteForwardConfig,
   StartForwardConfig,
   StopForwardConfig,
-} from "../../../wailsjs/go/main/App";
-import { main, forward_entity } from "../../../wailsjs/go/models";
+} from "../../../wailsjs/go/app/App";
+import { app, forward_entity } from "../../../wailsjs/go/models";
 
 // 编辑中的规则（无 id）
 interface EditRule {
@@ -37,7 +37,7 @@ const emptyRule = (): EditRule => ({
 
 export function PortForwardPage() {
   const { t } = useTranslation();
-  const [configs, setConfigs] = useState<main.ForwardConfigWithStatus[]>([]);
+  const [configs, setConfigs] = useState<app.ForwardConfigWithStatus[]>([]);
   const [loading, setLoading] = useState(false);
 
   // 编辑弹窗
@@ -69,7 +69,7 @@ export function PortForwardPage() {
     setDialogOpen(true);
   };
 
-  const openEdit = (cfg: main.ForwardConfigWithStatus) => {
+  const openEdit = (cfg: app.ForwardConfigWithStatus) => {
     setEditId(cfg.id);
     setEditName(cfg.name);
     setEditAssetId(cfg.assetId);
@@ -129,7 +129,7 @@ export function PortForwardPage() {
     refresh();
   };
 
-  const handleAssetChange = async (cfg: main.ForwardConfigWithStatus, assetId: number) => {
+  const handleAssetChange = async (cfg: app.ForwardConfigWithStatus, assetId: number) => {
     const wasRunning = cfg.status !== "stopped";
     const rules = cfg.rules.map(
       (r) =>

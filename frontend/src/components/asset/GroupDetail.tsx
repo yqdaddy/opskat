@@ -4,7 +4,7 @@ import { Folder } from "lucide-react";
 import { useAssetStore } from "@/stores/assetStore";
 import { CommandPolicyCard } from "@/components/asset/CommandPolicyCard";
 import { group_entity } from "../../../wailsjs/go/models";
-import { UpdateGroup } from "../../../wailsjs/go/main/App";
+import { UpdateGroup } from "../../../wailsjs/go/app/App";
 import { toast } from "sonner";
 import { getIconComponent, getIconColor } from "@/components/asset/IconPicker";
 

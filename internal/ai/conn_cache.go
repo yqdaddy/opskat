@@ -58,3 +58,21 @@ func (c *ConnCache[C]) GetOrDial(assetID int64, dial func() (C, io.Closer, error
 	c.closers[assetID] = closer
 	return client, nil, nil
 }
+
+// Remove 关闭并移除指定 assetID 的缓存连接
+func (c *ConnCache[C]) Remove(assetID int64) {
+	if client, ok := c.clients[assetID]; ok {
+		if err := client.Close(); err != nil {
+			logger.Default().Warn("close "+c.name+" connection", zap.Int64("assetID", assetID), zap.Error(err))
+		}
+		delete(c.clients, assetID)
+	}
+	if closer, ok := c.closers[assetID]; ok {
+		if closer != nil {
+			if err := closer.Close(); err != nil {
+				logger.Default().Warn("close "+c.name+" tunnel", zap.Int64("assetID", assetID), zap.Error(err))
+			}
+		}
+		delete(c.closers, assetID)
+	}
+}

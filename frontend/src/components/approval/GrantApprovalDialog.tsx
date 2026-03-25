@@ -11,7 +11,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { useWailsEvent } from "@/hooks/useWailsEvent";
-import { RespondGrantApprovalWithEdits } from "../../../wailsjs/go/main/App";
+import { RespondGrantApprovalWithEdits } from "../../../wailsjs/go/app/App";
 import { ShieldAlert, Server, FolderOpen, Globe } from "lucide-react";
 
 interface GrantItem {

@@ -20,3 +20,7 @@ internal/embedded/opsctl_bin
 
 coverage.out
 coverage.html
+
+superpowers
+
+coverage_new.out

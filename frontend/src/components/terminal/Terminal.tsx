@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef } from "react";
 import { Terminal as XTerminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import "@xterm/xterm/css/xterm.css";
-import { WriteSSH, ResizeSSH } from "../../../wailsjs/go/main/App";
+import { WriteSSH, ResizeSSH } from "../../../wailsjs/go/app/App";
 import { EventsOn, EventsOff } from "../../../wailsjs/runtime/runtime";
 import { useShortcutStore, matchShortcut } from "@/stores/shortcutStore";
 import { useTerminalStore } from "@/stores/terminalStore";

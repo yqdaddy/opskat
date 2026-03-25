@@ -12,7 +12,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { RespondCommandConfirm } from "../../../wailsjs/go/main/App";
+import { RespondCommandConfirm } from "../../../wailsjs/go/app/App";
 import type { ContentBlock } from "@/stores/aiStore";
 
 const toolIcons: Record<string, typeof Terminal> = {

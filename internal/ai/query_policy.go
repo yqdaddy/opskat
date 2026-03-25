@@ -104,13 +104,20 @@ func classifyStmt(stmt ast.StmtNode) StatementInfo {
 	return info
 }
 
-// CheckQueryPolicy 检查 SQL 语句是否符合策略
+// CheckQueryPolicy 检查 SQL 语句是否符合策略（合并默认策略后检查）
 func CheckQueryPolicy(ctx context.Context, policy *asset_entity.QueryPolicy, stmts []StatementInfo) CheckResult {
 	merged := mergeQueryPolicy(policy, asset_entity.DefaultQueryPolicy())
+	return checkQueryPolicyRules(ctx, merged, stmts)
+}
 
+// checkQueryPolicyRules 检查 SQL 语句是否符合给定策略（不合并默认策略）
+func checkQueryPolicyRules(ctx context.Context, policy *asset_entity.QueryPolicy, stmts []StatementInfo) CheckResult {
+	if policy == nil {
+		return CheckResult{Decision: Allow, DecisionSource: SourcePolicyAllow}
+	}
 	for _, stmt := range stmts {
 		// deny_types 检查
-		for _, denied := range merged.DenyTypes {
+		for _, denied := range policy.DenyTypes {
 			if strings.EqualFold(stmt.Type, denied) {
 				return CheckResult{
 					Decision:       Deny,
@@ -121,7 +128,7 @@ func CheckQueryPolicy(ctx context.Context, policy *asset_entity.QueryPolicy, stm
 			}
 		}
 		// deny_flags 检查
-		if stmt.Dangerous && containsStr(merged.DenyFlags, stmt.Reason) {
+		if stmt.Dangerous && containsStr(policy.DenyFlags, stmt.Reason) {
 			return CheckResult{
 				Decision:       Deny,
 				Message:        policyFmt(ctx, "SQL statement denied by policy: %s (%s)", "SQL 语句被策略禁止: %s (%s)", stmt.Reason, stmt.Raw),
@@ -130,7 +137,7 @@ func CheckQueryPolicy(ctx context.Context, policy *asset_entity.QueryPolicy, stm
 			}
 		}
 		// allow_types 白名单
-		if len(merged.AllowTypes) > 0 && !containsStrFold(merged.AllowTypes, stmt.Type) {
+		if len(policy.AllowTypes) > 0 && !containsStrFold(policy.AllowTypes, stmt.Type) {
 			return CheckResult{Decision: NeedConfirm}
 		}
 	}

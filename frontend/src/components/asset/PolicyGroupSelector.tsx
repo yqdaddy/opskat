@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import { Plus, X, Shield, Lock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { ListPolicyGroups } from "../../../wailsjs/go/main/App";
+import { ListPolicyGroups } from "../../../wailsjs/go/app/App";
 import type { policy_group_entity } from "../../../wailsjs/go/models";
 
 type PolicyType = "ssh" | "database" | "redis";

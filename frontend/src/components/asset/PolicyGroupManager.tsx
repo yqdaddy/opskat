@@ -14,7 +14,7 @@ import {
   UpdatePolicyGroup,
   DeletePolicyGroup,
   CopyPolicyGroup,
-} from "../../../wailsjs/go/main/App";
+} from "../../../wailsjs/go/app/App";
 import { policy_group_entity } from "../../../wailsjs/go/models";
 
 type TabType = "command" | "query" | "redis";

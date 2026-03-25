@@ -7,8 +7,8 @@ import {
   DisconnectSSH,
   SplitSSH,
   UpdateAssetPassword,
-} from "../../wailsjs/go/main/App";
-import { main, asset_entity } from "../../wailsjs/go/models";
+} from "../../wailsjs/go/app/App";
+import { app, asset_entity } from "../../wailsjs/go/models";
 import { EventsOn, EventsOff } from "../../wailsjs/runtime/runtime";
 import { useTabStore, registerTabCloseHook, registerTabRestoreHook, type TerminalTabMeta } from "./tabStore";
 import { useAssetStore } from "./assetStore";
@@ -350,7 +350,7 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
     }));
 
     try {
-      const req = new main.SSHConnectRequest({
+      const req = new app.SSHConnectRequest({
         assetId,
         password,
         key: "",
@@ -468,7 +468,7 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
     }
 
     const meta = tab.meta as TerminalTabMeta;
-    const req = new main.SSHConnectRequest({
+    const req = new app.SSHConnectRequest({
       assetId: meta.assetId,
       password: "",
       key: "",

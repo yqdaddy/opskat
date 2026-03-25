@@ -11,7 +11,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useWailsEvent } from "@/hooks/useWailsEvent";
-import { RespondOpsctlApproval, RespondOpsctlApprovalGrant } from "../../../wailsjs/go/main/App";
+import { RespondOpsctlApproval, RespondOpsctlApprovalGrant } from "../../../wailsjs/go/app/App";
 import { ShieldAlert } from "lucide-react";
 
 interface ApprovalEvent {

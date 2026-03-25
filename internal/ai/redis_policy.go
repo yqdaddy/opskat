@@ -74,12 +74,19 @@ func MatchRedisRule(rule, cmd string) bool {
 	return matched
 }
 
-// CheckRedisPolicy 检查 Redis 命令是否符合策略
+// CheckRedisPolicy 检查 Redis 命令是否符合策略（合并默认策略后检查）
 func CheckRedisPolicy(ctx context.Context, policy *asset_entity.RedisPolicy, cmd string) CheckResult {
 	merged := mergeRedisPolicy(policy, asset_entity.DefaultRedisPolicy())
+	return checkRedisPolicyRules(ctx, merged, cmd)
+}
 
+// checkRedisPolicyRules 检查 Redis 命令是否符合给定策略（不合并默认策略）
+func checkRedisPolicyRules(ctx context.Context, policy *asset_entity.RedisPolicy, cmd string) CheckResult {
+	if policy == nil {
+		return CheckResult{Decision: Allow, DecisionSource: SourcePolicyAllow}
+	}
 	// deny list 检查
-	for _, rule := range merged.DenyList {
+	for _, rule := range policy.DenyList {
 		if MatchRedisRule(rule, cmd) {
 			return CheckResult{
 				Decision:       Deny,
@@ -90,8 +97,8 @@ func CheckRedisPolicy(ctx context.Context, policy *asset_entity.RedisPolicy, cmd
 		}
 	}
 	// allow list 白名单
-	if len(merged.AllowList) > 0 {
-		for _, rule := range merged.AllowList {
+	if len(policy.AllowList) > 0 {
+		for _, rule := range policy.AllowList {
 			if MatchRedisRule(rule, cmd) {
 				return CheckResult{Decision: Allow, DecisionSource: SourcePolicyAllow}
 			}

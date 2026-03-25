@@ -9,7 +9,7 @@ import { cn } from "@/lib/utils";
 import { useAssetStore } from "@/stores/assetStore";
 import { CommandPolicyCard } from "@/components/asset/CommandPolicyCard";
 import { asset_entity } from "../../../wailsjs/go/models";
-import { GetDefaultPolicy } from "../../../wailsjs/go/main/App";
+import { GetDefaultPolicy } from "../../../wailsjs/go/app/App";
 
 interface SSHConfig {
   host: string;

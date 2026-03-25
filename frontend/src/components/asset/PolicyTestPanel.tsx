@@ -3,8 +3,8 @@ import { useTranslation } from "react-i18next";
 import { FlaskConical, ShieldCheck, ShieldX, ShieldAlert, Loader2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { TestPolicyRule } from "../../../wailsjs/go/main/App";
-import { main } from "../../../wailsjs/go/models";
+import { TestPolicyRule } from "../../../wailsjs/go/app/App";
+import { app } from "../../../wailsjs/go/models";
 import { cn } from "@/lib/utils";
 
 type PolicyType = "ssh" | "database" | "redis";
@@ -60,7 +60,7 @@ export function PolicyTestPanel({ policyType, buildPolicyJSON, assetID, groupID 
     setTesting(true);
     setResult(null);
     try {
-      const req = new main.PolicyTestRequest({
+      const req = new app.PolicyTestRequest({
         policyType,
         policyJSON: buildPolicyJSON(),
         command: cmd,

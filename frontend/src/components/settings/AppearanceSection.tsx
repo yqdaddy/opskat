@@ -1,0 +1,251 @@
+import { useState } from "react";
+import { useTranslation } from "react-i18next";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Separator } from "@/components/ui/separator";
+import { useTheme } from "@/components/theme-provider";
+import { Plus, Pencil, Trash2 } from "lucide-react";
+import { useTerminalThemeStore } from "@/stores/terminalThemeStore";
+import { builtinThemes, TerminalTheme } from "@/data/terminalThemes";
+import { TerminalThemeEditor } from "@/components/settings/TerminalThemeEditor";
+import { cn } from "@/lib/utils";
+
+export function AppearanceSection() {
+  const { t, i18n } = useTranslation();
+  const { theme, setTheme } = useTheme();
+
+  const [startupTab, setStartupTab] = useState(() => localStorage.getItem("startup_tab") || "last");
+
+  const handleLanguageChange = (lng: string) => {
+    i18n.changeLanguage(lng);
+    localStorage.setItem("language", lng);
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">{t("theme.toggle")}</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="grid gap-2">
+          <Label>{t("theme.toggle")}</Label>
+          <Select value={theme} onValueChange={setTheme as (v: string) => void}>
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="light">{t("theme.light")}</SelectItem>
+              <SelectItem value="dark">{t("theme.dark")}</SelectItem>
+              <SelectItem value="system">{t("theme.system")}</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <Separator />
+        <div className="grid gap-2">
+          <Label>{t("language.label")}</Label>
+          <Select value={i18n.language} onValueChange={handleLanguageChange}>
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="zh-CN">{t("language.zh-CN")}</SelectItem>
+              <SelectItem value="en">{t("language.en")}</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <Separator />
+        <div className="grid gap-2">
+          <Label>{t("appearance.startupTab")}</Label>
+          <Select
+            value={startupTab}
+            onValueChange={(v) => {
+              localStorage.setItem("startup_tab", v);
+              setStartupTab(v);
+            }}
+          >
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="last">{t("appearance.startupTabLast")}</SelectItem>
+              <SelectItem value="home">{t("appearance.startupTabHome")}</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+export function TerminalSection() {
+  const { t } = useTranslation();
+  const {
+    selectedThemeId,
+    setSelectedThemeId,
+    fontSize,
+    setFontSize,
+    customThemes,
+    addCustomTheme,
+    updateCustomTheme,
+    removeCustomTheme,
+  } = useTerminalThemeStore();
+  const [themeEditorOpen, setThemeEditorOpen] = useState(false);
+  const [editingTheme, setEditingTheme] = useState<TerminalTheme | undefined>(undefined);
+
+  return (
+    <>
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">{t("terminal.title")}</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {/* Font size */}
+          <div className="grid gap-2">
+            <Label>{t("terminal.fontSize")}</Label>
+            <div className="flex items-center gap-2">
+              <Input
+                type="number"
+                min={8}
+                max={32}
+                value={fontSize}
+                onChange={(e) => setFontSize(Number(e.target.value))}
+                className="w-24"
+              />
+              <span className="text-sm text-muted-foreground">px</span>
+            </div>
+          </div>
+
+          <Separator />
+
+          {/* Builtin themes */}
+          <div className="space-y-2">
+            <Label>{t("terminal.builtinThemes")}</Label>
+            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2">
+              {/* Default (no theme) */}
+              <button
+                onClick={() => setSelectedThemeId("default")}
+                className={cn(
+                  "rounded-md border p-2 text-left transition-all hover:ring-2 hover:ring-primary/50",
+                  selectedThemeId === "default" && "ring-2 ring-primary"
+                )}
+              >
+                <div className="rounded h-10 mb-1.5 flex items-center justify-center bg-black">
+                  <span className="text-white text-xs font-mono">&gt;_</span>
+                </div>
+                <div className="text-xs truncate font-medium">{t("terminal.default")}</div>
+              </button>
+              {builtinThemes.map((bt) => (
+                <button
+                  key={bt.id}
+                  onClick={() => setSelectedThemeId(bt.id)}
+                  className={cn(
+                    "rounded-md border p-2 text-left transition-all hover:ring-2 hover:ring-primary/50",
+                    selectedThemeId === bt.id && "ring-2 ring-primary"
+                  )}
+                >
+                  {/* Color preview */}
+                  <div
+                    className="rounded h-10 mb-1.5 flex items-end p-1 gap-0.5"
+                    style={{ background: bt.background }}
+                  >
+                    {[bt.red, bt.green, bt.yellow, bt.blue, bt.magenta, bt.cyan].map((c, i) => (
+                      <div key={i} className="w-2 h-3 rounded-sm" style={{ background: c }} />
+                    ))}
+                  </div>
+                  <div className="text-xs truncate font-medium">{bt.name}</div>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <Separator />
+
+          {/* Custom themes */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <Label>{t("terminal.customThemes")}</Label>
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-1"
+                onClick={() => {
+                  setEditingTheme(undefined);
+                  setThemeEditorOpen(true);
+                }}
+              >
+                <Plus className="h-3.5 w-3.5" />
+                {t("terminal.newTheme")}
+              </Button>
+            </div>
+            {customThemes.length === 0 ? (
+              <p className="text-sm text-muted-foreground">{t("terminal.noCustomThemes")}</p>
+            ) : (
+              <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2">
+                {customThemes.map((ct) => (
+                  <div
+                    key={ct.id}
+                    className={cn(
+                      "group relative rounded-md border p-2 text-left transition-all hover:ring-2 hover:ring-primary/50 cursor-pointer",
+                      selectedThemeId === ct.id && "ring-2 ring-primary"
+                    )}
+                    onClick={() => setSelectedThemeId(ct.id)}
+                  >
+                    <div
+                      className="rounded h-10 mb-1.5 flex items-end p-1 gap-0.5"
+                      style={{ background: ct.background }}
+                    >
+                      {[ct.red, ct.green, ct.yellow, ct.blue, ct.magenta, ct.cyan].map((c, i) => (
+                        <div key={i} className="w-2 h-3 rounded-sm" style={{ background: c }} />
+                      ))}
+                    </div>
+                    <div className="text-xs truncate font-medium">{ct.name}</div>
+                    {/* Edit/Delete */}
+                    <div className="absolute top-1 right-1 hidden group-hover:flex gap-0.5">
+                      <button
+                        className="rounded p-0.5 bg-background/80 hover:bg-muted"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setEditingTheme(ct);
+                          setThemeEditorOpen(true);
+                        }}
+                      >
+                        <Pencil className="h-3 w-3" />
+                      </button>
+                      <button
+                        className="rounded p-0.5 bg-background/80 hover:bg-destructive/20"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          removeCustomTheme(ct.id);
+                        }}
+                      >
+                        <Trash2 className="h-3 w-3" />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Terminal theme editor */}
+      <TerminalThemeEditor
+        open={themeEditorOpen}
+        onOpenChange={setThemeEditorOpen}
+        theme={editingTheme}
+        onSave={(theme) => {
+          if (editingTheme) {
+            updateCustomTheme(theme);
+          } else {
+            addCustomTheme(theme);
+          }
+          setSelectedThemeId(theme.id);
+        }}
+      />
+    </>
+  );
+}

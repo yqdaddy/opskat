@@ -26,7 +26,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { backup_svc } from "../../../wailsjs/go/models";
-import { ExportToFile } from "../../../wailsjs/go/main/App";
+import { ExportToFile } from "../../../wailsjs/go/app/App";
 import { useAssetStore } from "@/stores/assetStore";
 import { useShortcutStore, DEFAULT_SHORTCUTS } from "@/stores/shortcutStore";
 import { useTerminalThemeStore } from "@/stores/terminalThemeStore";

@@ -1,30 +1,29 @@
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
-import { Trash2, FolderOpen, Loader2, PlugZap } from "lucide-react";
+import { Loader2, PlugZap } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Switch } from "@/components/ui/switch";
 import { IconPicker } from "@/components/asset/IconPicker";
-import { AssetSelect } from "@/components/asset/AssetSelect";
 import { GroupSelect } from "@/components/asset/GroupSelect";
-import { PasswordSourceField } from "@/components/asset/PasswordSourceField";
 import { useAssetStore } from "@/stores/assetStore";
 import { asset_entity, credential_entity } from "../../../wailsjs/go/models";
 import {
   EncryptPassword,
   ListCredentialsByType,
   ListLocalSSHKeys,
-  SelectSSHKeyFile,
   TestSSHConnection,
   TestDatabaseConnection,
   TestRedisConnection,
-} from "../../../wailsjs/go/main/App";
-import { main } from "../../../wailsjs/go/models";
+} from "../../../wailsjs/go/app/App";
+import { app } from "../../../wailsjs/go/models";
+import { SSHConfigSection } from "@/components/asset/SSHConfigSection";
+import { DatabaseConfigSection } from "@/components/asset/DatabaseConfigSection";
+import { RedisConfigSection } from "@/components/asset/RedisConfigSection";
 
 interface AssetFormProps {
   open: boolean;
@@ -126,7 +125,7 @@ export function AssetForm({ open, onOpenChange, editAsset, defaultGroupId = 0 }:
   const [managedKeys, setManagedKeys] = useState<credential_entity.Credential[]>([]);
 
   // SSH fields - local key
-  const [localKeys, setLocalKeys] = useState<main.LocalSSHKeyInfo[]>([]);
+  const [localKeys, setLocalKeys] = useState<app.LocalSSHKeyInfo[]>([]);
   const [selectedKeyPaths, setSelectedKeyPaths] = useState<string[]>([]);
   const [scanningKeys, setScanningKeys] = useState(false);
   const [jumpHostId, setJumpHostId] = useState(0);
@@ -209,7 +208,6 @@ export function AssetForm({ open, onOpenChange, editAsset, defaultGroupId = 0 }:
 
       setEncryptedPassword(cfg.password || "");
       setPassword("");
-      // 密码认证时检查是否使用托管密码
       if (cfg.auth_type === "password" && cfg.credential_id) {
         setPasswordSource("managed");
         setPasswordCredentialId(cfg.credential_id);
@@ -217,7 +215,6 @@ export function AssetForm({ open, onOpenChange, editAsset, defaultGroupId = 0 }:
         setPasswordSource("inline");
         setPasswordCredentialId(0);
       }
-      // 向后兼容：如果有 private_keys 字段则是文件模式，否则是托管模式
       setKeySource(cfg.private_keys && cfg.private_keys.length > 0 ? "file" : "managed");
       setCredentialId(cfg.auth_type === "key" ? cfg.credential_id || 0 : 0);
       setSelectedKeyPaths(cfg.private_keys || []);
@@ -401,7 +398,6 @@ export function AssetForm({ open, onOpenChange, editAsset, defaultGroupId = 0 }:
       if (keySource === "managed" && credentialId > 0) sshConfig.credential_id = credentialId;
       if (keySource === "file" && selectedKeyPaths.length > 0) sshConfig.private_keys = selectedKeyPaths;
     }
-    // 没有输入新密码时，传入已保存的加密密码供后端解密
     if (!password && encryptedPassword) {
       sshConfig.password = encryptedPassword;
     }
@@ -433,7 +429,6 @@ export function AssetForm({ open, onOpenChange, editAsset, defaultGroupId = 0 }:
     if (readOnly) cfg.read_only = true;
     if (dbSshAssetId > 0) cfg.ssh_asset_id = dbSshAssetId;
     if (params) cfg.params = params;
-    // 没有输入新密码时，传入已保存的加密密码供后端解密
     if (!password && encryptedPassword) cfg.password = encryptedPassword;
     setTesting(true);
     try {
@@ -451,7 +446,6 @@ export function AssetForm({ open, onOpenChange, editAsset, defaultGroupId = 0 }:
     if (username) cfg.username = username;
     if (tls) cfg.tls = true;
     if (redisSshAssetId > 0) cfg.ssh_asset_id = redisSshAssetId;
-    // 没有输入新密码时，传入已保存的加密密码供后端解密
     if (!password && encryptedPassword) cfg.password = encryptedPassword;
     setTesting(true);
     try {
@@ -464,7 +458,7 @@ export function AssetForm({ open, onOpenChange, editAsset, defaultGroupId = 0 }:
     }
   };
 
-  const encryptPassword = async (): Promise<string | undefined> => {
+  const encryptPasswordValue = async (): Promise<string | undefined> => {
     if (password) {
       try {
         return await EncryptPassword(password);
@@ -473,7 +467,6 @@ export function AssetForm({ open, onOpenChange, editAsset, defaultGroupId = 0 }:
         return undefined;
       }
     }
-    // Keep existing encrypted password if user didn't change it
     if (encryptedPassword) return encryptedPassword;
     return "";
   };
@@ -506,7 +499,7 @@ export function AssetForm({ open, onOpenChange, editAsset, defaultGroupId = 0 }:
         if (passwordSource === "managed" && passwordCredentialId > 0) {
           sshConfig.credential_id = passwordCredentialId;
         } else {
-          const encrypted = await encryptPassword();
+          const encrypted = await encryptPasswordValue();
           if (encrypted === undefined) return;
           if (encrypted) sshConfig.password = encrypted;
         }
@@ -539,7 +532,7 @@ export function AssetForm({ open, onOpenChange, editAsset, defaultGroupId = 0 }:
       if (passwordSource === "managed" && passwordCredentialId > 0) {
         dbConfig.credential_id = passwordCredentialId;
       } else {
-        const encrypted = await encryptPassword();
+        const encrypted = await encryptPasswordValue();
         if (encrypted === undefined) return;
         if (encrypted) dbConfig.password = encrypted;
       }
@@ -558,7 +551,7 @@ export function AssetForm({ open, onOpenChange, editAsset, defaultGroupId = 0 }:
       if (passwordSource === "managed" && passwordCredentialId > 0) {
         redisConfig.credential_id = passwordCredentialId;
       } else {
-        const encrypted = await encryptPassword();
+        const encrypted = await encryptPasswordValue();
         if (encrypted === undefined) return;
         if (encrypted) redisConfig.password = encrypted;
       }
@@ -658,398 +651,105 @@ export function AssetForm({ open, onOpenChange, editAsset, defaultGroupId = 0 }:
             </div>
           )}
 
-          {/* SSH: Connection Type + Host + Port */}
+          {/* Type-specific config sections */}
           {assetType === "ssh" && (
-            <div className="grid gap-2">
-              <Label>{t("asset.host")}</Label>
-              <div className="flex gap-2">
-                <Select
-                  value={connectionType}
-                  onValueChange={(v) => setConnectionType(v as "direct" | "jumphost" | "proxy")}
-                >
-                  <SelectTrigger className="w-[100px] shrink-0">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="direct">{t("asset.connectionDirect")}</SelectItem>
-                    <SelectItem value="jumphost">{t("asset.connectionJumpHost")}</SelectItem>
-                    <SelectItem value="proxy">{t("asset.connectionProxy")}</SelectItem>
-                  </SelectContent>
-                </Select>
-                <Input
-                  className="flex-1"
-                  value={host}
-                  onChange={(e) => setHost(e.target.value)}
-                  placeholder="192.168.1.1"
-                />
-                <Input
-                  className="w-[80px] shrink-0 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-                  type="number"
-                  value={port}
-                  onChange={(e) => setPort(Number(e.target.value))}
-                />
-              </div>
-            </div>
-          )}
-
-          {/* Database / Redis: Host + Port */}
-          {(assetType === "database" || assetType === "redis") && (
-            <div className="grid gap-2">
-              <Label>{t("asset.host")}</Label>
-              <div className="flex gap-2">
-                <Input
-                  className="flex-1"
-                  value={host}
-                  onChange={(e) => setHost(e.target.value)}
-                  placeholder="192.168.1.1"
-                />
-                <Input
-                  className="w-[80px] shrink-0 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-                  type="number"
-                  value={port}
-                  onChange={(e) => setPort(Number(e.target.value))}
-                />
-              </div>
-            </div>
-          )}
-
-          {/* SSH: Jump Host selector */}
-          {assetType === "ssh" && connectionType === "jumphost" && (
-            <div className="grid gap-2">
-              <Label>{t("asset.selectJumpHost")}</Label>
-              <AssetSelect
-                value={jumpHostId}
-                onValueChange={setJumpHostId}
-                filterType="ssh"
-                excludeIds={jumpHostExcludeIds}
-                placeholder={t("asset.jumpHostNone")}
-              />
-            </div>
-          )}
-
-          {/* SSH: Proxy config */}
-          {assetType === "ssh" && connectionType === "proxy" && (
-            <div className="grid gap-3 border rounded-lg p-3">
-              <div className="grid grid-cols-3 gap-2">
-                <div className="grid gap-1">
-                  <Label className="text-xs">{t("asset.proxyType")}</Label>
-                  <Select value={proxyType} onValueChange={setProxyType}>
-                    <SelectTrigger className="h-8 text-xs">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="socks5">SOCKS5</SelectItem>
-                      <SelectItem value="socks4">SOCKS4</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="grid gap-1">
-                  <Label className="text-xs">{t("asset.proxyHost")}</Label>
-                  <Input
-                    className="h-8 text-xs"
-                    value={proxyHost}
-                    onChange={(e) => setProxyHost(e.target.value)}
-                    placeholder="127.0.0.1"
-                  />
-                </div>
-                <div className="grid gap-1">
-                  <Label className="text-xs">{t("asset.proxyPort")}</Label>
-                  <Input
-                    className="h-8 text-xs [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-                    type="number"
-                    value={proxyPort}
-                    onChange={(e) => setProxyPort(Number(e.target.value))}
-                  />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                <div className="grid gap-1">
-                  <Label className="text-xs">{t("asset.proxyUsername")}</Label>
-                  <Input
-                    className="h-8 text-xs"
-                    value={proxyUsername}
-                    onChange={(e) => setProxyUsername(e.target.value)}
-                  />
-                </div>
-                <div className="grid gap-1">
-                  <Label className="text-xs">{t("asset.proxyPassword")}</Label>
-                  <Input
-                    className="h-8 text-xs"
-                    type="password"
-                    value={proxyPassword}
-                    onChange={(e) => setProxyPassword(e.target.value)}
-                    placeholder={encryptedProxyPassword ? t("asset.passwordUnchanged") : ""}
-                  />
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* SSH: Username + AuthType */}
-          {assetType === "ssh" && (
-            <div className="grid grid-cols-2 gap-4">
-              <div className="grid gap-2">
-                <Label>{t("asset.username")}</Label>
-                <Input value={username} onChange={(e) => setUsername(e.target.value)} />
-              </div>
-              <div className="grid gap-2">
-                <Label>{t("asset.authType")}</Label>
-                <Select value={authType} onValueChange={setAuthType}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="password">{t("asset.authPassword")}</SelectItem>
-                    <SelectItem value="key">{t("asset.authKey")}</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-          )}
-
-          {/* Database / Redis: Username */}
-          {(assetType === "database" || assetType === "redis") && (
-            <div className="grid gap-2">
-              <Label>{t("asset.username")}</Label>
-              <Input
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                placeholder={
-                  assetType === "redis"
-                    ? t("asset.username") + " (" + t("asset.databasePlaceholder").split("（")[0] + ")"
-                    : ""
-                }
-              />
-            </div>
-          )}
-
-          {/* SSH: Password (when auth_type=password) */}
-          {assetType === "ssh" && authType === "password" && (
-            <PasswordSourceField
-              source={passwordSource}
-              onSourceChange={setPasswordSource}
+            <SSHConfigSection
+              host={host}
+              setHost={setHost}
+              port={port}
+              setPort={setPort}
+              username={username}
+              setUsername={setUsername}
+              authType={authType}
+              setAuthType={setAuthType}
+              connectionType={connectionType}
+              setConnectionType={setConnectionType}
               password={password}
-              onPasswordChange={setPassword}
-              credentialId={passwordCredentialId}
-              onCredentialIdChange={setPasswordCredentialId}
+              setPassword={setPassword}
+              encryptedPassword={encryptedPassword}
+              passwordSource={passwordSource}
+              setPasswordSource={setPasswordSource}
+              passwordCredentialId={passwordCredentialId}
+              setPasswordCredentialId={setPasswordCredentialId}
               managedPasswords={managedPasswords}
-              placeholder={t("asset.passwordPlaceholder")}
-              hasExistingPassword={!!encryptedPassword}
+              keySource={keySource}
+              setKeySource={setKeySource}
+              credentialId={credentialId}
+              setCredentialId={setCredentialId}
+              managedKeys={managedKeys}
+              localKeys={localKeys}
+              setLocalKeys={setLocalKeys}
+              selectedKeyPaths={selectedKeyPaths}
+              setSelectedKeyPaths={setSelectedKeyPaths}
+              scanningKeys={scanningKeys}
+              jumpHostId={jumpHostId}
+              setJumpHostId={setJumpHostId}
+              jumpHostExcludeIds={jumpHostExcludeIds}
+              proxyType={proxyType}
+              setProxyType={setProxyType}
+              proxyHost={proxyHost}
+              setProxyHost={setProxyHost}
+              proxyPort={proxyPort}
+              setProxyPort={setProxyPort}
+              proxyUsername={proxyUsername}
+              setProxyUsername={setProxyUsername}
+              proxyPassword={proxyPassword}
+              setProxyPassword={setProxyPassword}
+              encryptedProxyPassword={encryptedProxyPassword}
             />
           )}
 
-          {/* Database / Redis: Password */}
-          {(assetType === "database" || assetType === "redis") && (
-            <PasswordSourceField
-              source={passwordSource}
-              onSourceChange={setPasswordSource}
-              password={password}
-              onPasswordChange={setPassword}
-              credentialId={passwordCredentialId}
-              onCredentialIdChange={setPasswordCredentialId}
-              managedPasswords={managedPasswords}
-              hasExistingPassword={!!encryptedPassword}
-            />
-          )}
-
-          {/* SSH: Key config */}
-          {assetType === "ssh" && authType === "key" && (
-            <div className="grid gap-3 border rounded-lg p-3">
-              <div className="grid gap-2">
-                <Label>{t("asset.keySource")}</Label>
-                <Select value={keySource} onValueChange={(v) => setKeySource(v as "managed" | "file")}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="managed">{t("asset.keySourceManaged")}</SelectItem>
-                    <SelectItem value="file">{t("asset.keySourceFile")}</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {keySource === "managed" && (
-                <div className="grid gap-2">
-                  <Label>{t("asset.selectKey")}</Label>
-                  {managedKeys.length > 0 ? (
-                    <Select value={String(credentialId)} onValueChange={(v) => setCredentialId(Number(v))}>
-                      <SelectTrigger>
-                        <SelectValue placeholder={t("asset.selectKeyPlaceholder")} />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="0">{t("asset.selectKeyPlaceholder")}</SelectItem>
-                        {managedKeys.map((k) => (
-                          <SelectItem key={k.id} value={String(k.id)}>
-                            {k.name} ({(k.keyType || "").toUpperCase()})
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  ) : (
-                    <p className="text-xs text-muted-foreground">{t("asset.noManagedKeys")}</p>
-                  )}
-                </div>
-              )}
-
-              {keySource === "file" && (
-                <div className="grid gap-2">
-                  <Label>{t("asset.discoveredKeys")}</Label>
-                  {scanningKeys ? (
-                    <div className="flex items-center gap-2 text-xs text-muted-foreground py-1">
-                      <Loader2 className="h-3 w-3 animate-spin" />
-                      {t("asset.scanningKeys")}
-                    </div>
-                  ) : localKeys.length > 0 ? (
-                    <div className="grid gap-1.5">
-                      {localKeys.map((k) => {
-                        const selected = selectedKeyPaths.includes(k.path);
-                        return (
-                          <label
-                            key={k.path}
-                            className="flex items-center gap-2 text-xs cursor-pointer hover:bg-accent rounded px-2 py-1.5"
-                          >
-                            <input
-                              type="checkbox"
-                              checked={selected}
-                              onChange={() => {
-                                if (selected) {
-                                  setSelectedKeyPaths(selectedKeyPaths.filter((p) => p !== k.path));
-                                } else {
-                                  setSelectedKeyPaths([...selectedKeyPaths, k.path]);
-                                }
-                              }}
-                              className="rounded"
-                            />
-                            <span className="font-medium truncate">{k.path.split("/").pop()}</span>
-                            <span className="text-muted-foreground">({k.keyType})</span>
-                            <span className="text-muted-foreground truncate ml-auto" title={k.fingerprint}>
-                              {k.fingerprint.substring(0, 20)}...
-                            </span>
-                          </label>
-                        );
-                      })}
-                    </div>
-                  ) : (
-                    <p className="text-xs text-muted-foreground">{t("asset.noLocalKeys")}</p>
-                  )}
-
-                  {selectedKeyPaths
-                    .filter((p) => !localKeys.some((k) => k.path === p))
-                    .map((path) => (
-                      <div key={path} className="flex items-center gap-2 text-xs px-2 py-1.5 bg-accent rounded">
-                        <span className="truncate flex-1">{path}</span>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          className="h-5 w-5 shrink-0"
-                          onClick={() => setSelectedKeyPaths(selectedKeyPaths.filter((p2) => p2 !== path))}
-                        >
-                          <Trash2 className="h-3 w-3" />
-                        </Button>
-                      </div>
-                    ))}
-
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    className="w-full mt-1"
-                    onClick={async () => {
-                      try {
-                        const info = await SelectSSHKeyFile();
-                        if (info && !selectedKeyPaths.includes(info.path)) {
-                          setSelectedKeyPaths([...selectedKeyPaths, info.path]);
-                          if (!localKeys.some((k) => k.path === info.path)) {
-                            setLocalKeys([...localKeys, info]);
-                          }
-                        }
-                      } catch (e) {
-                        toast.error(String(e));
-                      }
-                    }}
-                  >
-                    <FolderOpen className="h-3.5 w-3.5 mr-1.5" />
-                    {t("asset.browseKeyFile")}
-                  </Button>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Database: extra fields */}
           {assetType === "database" && (
-            <>
-              <div className="grid gap-2">
-                <Label>{t("asset.database")}</Label>
-                <Input
-                  value={database}
-                  onChange={(e) => setDatabase(e.target.value)}
-                  placeholder={t("asset.databasePlaceholder")}
-                />
-              </div>
-
-              {driver === "postgresql" && (
-                <div className="grid gap-2">
-                  <Label>{t("asset.sslMode")}</Label>
-                  <Select value={sslMode} onValueChange={setSslMode}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="disable">disable</SelectItem>
-                      <SelectItem value="require">require</SelectItem>
-                      <SelectItem value="verify-ca">verify-ca</SelectItem>
-                      <SelectItem value="verify-full">verify-full</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              )}
-
-              <div className="grid gap-2">
-                <Label>{t("asset.params")}</Label>
-                <Input
-                  value={params}
-                  onChange={(e) => setParams(e.target.value)}
-                  placeholder={t("asset.paramsPlaceholder")}
-                />
-              </div>
-
-              <div className="flex items-center justify-between">
-                <Label>{t("asset.readOnly")}</Label>
-                <Switch checked={readOnly} onCheckedChange={setReadOnly} />
-              </div>
-
-              <div className="grid gap-2">
-                <Label>{t("asset.sshTunnel")}</Label>
-                <AssetSelect
-                  value={dbSshAssetId}
-                  onValueChange={setDbSshAssetId}
-                  filterType="ssh"
-                  placeholder={t("asset.sshTunnelNone")}
-                />
-              </div>
-            </>
+            <DatabaseConfigSection
+              host={host}
+              setHost={setHost}
+              port={port}
+              setPort={setPort}
+              username={username}
+              setUsername={setUsername}
+              driver={driver}
+              database={database}
+              setDatabase={setDatabase}
+              sslMode={sslMode}
+              setSslMode={setSslMode}
+              readOnly={readOnly}
+              setReadOnly={setReadOnly}
+              dbSshAssetId={dbSshAssetId}
+              setDbSshAssetId={setDbSshAssetId}
+              params={params}
+              setParams={setParams}
+              password={password}
+              setPassword={setPassword}
+              encryptedPassword={encryptedPassword}
+              passwordSource={passwordSource}
+              setPasswordSource={setPasswordSource}
+              passwordCredentialId={passwordCredentialId}
+              setPasswordCredentialId={setPasswordCredentialId}
+              managedPasswords={managedPasswords}
+            />
           )}
 
-          {/* Redis: extra fields */}
           {assetType === "redis" && (
-            <>
-              <div className="flex items-center justify-between">
-                <Label>{t("asset.tls")}</Label>
-                <Switch checked={tls} onCheckedChange={setTls} />
-              </div>
-
-              <div className="grid gap-2">
-                <Label>{t("asset.sshTunnel")}</Label>
-                <AssetSelect
-                  value={redisSshAssetId}
-                  onValueChange={setRedisSshAssetId}
-                  filterType="ssh"
-                  placeholder={t("asset.sshTunnelNone")}
-                />
-              </div>
-            </>
+            <RedisConfigSection
+              host={host}
+              setHost={setHost}
+              port={port}
+              setPort={setPort}
+              username={username}
+              setUsername={setUsername}
+              tls={tls}
+              setTls={setTls}
+              redisSshAssetId={redisSshAssetId}
+              setRedisSshAssetId={setRedisSshAssetId}
+              password={password}
+              setPassword={setPassword}
+              encryptedPassword={encryptedPassword}
+              passwordSource={passwordSource}
+              setPasswordSource={setPasswordSource}
+              passwordCredentialId={passwordCredentialId}
+              setPasswordCredentialId={setPasswordCredentialId}
+              managedPasswords={managedPasswords}
+            />
           )}
 
           {/* Test Connection */}

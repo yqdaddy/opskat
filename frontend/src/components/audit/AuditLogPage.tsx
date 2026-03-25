@@ -14,7 +14,7 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ListAuditLogs, ListAuditSessions, GetSSHPoolConnections } from "../../../wailsjs/go/main/App";
+import { ListAuditLogs, ListAuditSessions, GetSSHPoolConnections } from "../../../wailsjs/go/app/App";
 import { audit_entity, audit_repo, sshpool } from "../../../wailsjs/go/models";
 
 const PAGE_SIZE = 20;

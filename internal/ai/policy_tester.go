@@ -196,30 +196,11 @@ func testQueryPolicy(ctx context.Context, current *asset_entity.QueryPolicy, gro
 	}
 
 	// 类型专用策略：当前（含引用的权限组）
-	type source struct {
-		name   string
-		policy *asset_entity.QueryPolicy
-	}
-	var sources []source
-	if current != nil {
-		// 解析引用的权限组
-		if len(current.Groups) > 0 {
-			grpAllowTypes, grpDenyTypes, grpDenyFlags := resolveQueryGroups(ctx, current.Groups)
-			current.AllowTypes = append(current.AllowTypes, grpAllowTypes...)
-			current.DenyTypes = append(current.DenyTypes, grpDenyTypes...)
-			current.DenyFlags = append(current.DenyFlags, grpDenyFlags...)
-		}
-		sources = append(sources, source{"", current})
-	}
-
-	// 合并
-	merged := &asset_entity.QueryPolicy{}
-	for _, s := range sources {
-		if len(merged.AllowTypes) == 0 && len(s.policy.AllowTypes) > 0 {
-			merged.AllowTypes = s.policy.AllowTypes
-		}
-		merged.DenyTypes = appendUnique(merged.DenyTypes, s.policy.DenyTypes...)
-		merged.DenyFlags = appendUnique(merged.DenyFlags, s.policy.DenyFlags...)
+	if current != nil && len(current.Groups) > 0 {
+		grpAllowTypes, grpDenyTypes, grpDenyFlags := resolveQueryGroups(ctx, current.Groups)
+		current.AllowTypes = append(current.AllowTypes, grpAllowTypes...)
+		current.DenyTypes = append(current.DenyTypes, grpDenyTypes...)
+		current.DenyFlags = append(current.DenyFlags, grpDenyFlags...)
 	}
 
 	// 解析 SQL
@@ -231,35 +212,18 @@ func testQueryPolicy(ctx context.Context, current *asset_entity.QueryPolicy, gro
 		}
 	}
 
-	// 逐条检查
-	for _, stmt := range stmts {
-		for _, s := range sources {
-			for _, denied := range s.policy.DenyTypes {
-				if equalsIgnoreCase(stmt.Type, denied) {
-					return PolicyTestOutput{
-						Decision:       Deny,
-						MatchedPattern: denied,
-						MatchedSource:  s.name,
-						Message:        policyFmt(ctx, "SQL statement type %s denied by policy", "SQL 语句类型 %s 被策略禁止", stmt.Type),
-					}
-				}
-			}
+	// 复用核心策略检查逻辑（不合并默认策略，仅检查用户配置的规则）
+	result := checkQueryPolicyRules(ctx, current, stmts)
+	if result.Decision == Deny {
+		return PolicyTestOutput{
+			Decision:       Deny,
+			MatchedPattern: result.MatchedPattern,
+			MatchedSource:  "", // 当前资产策略
+			Message:        result.Message,
 		}
-		if stmt.Dangerous {
-			for _, s := range sources {
-				if containsStr(s.policy.DenyFlags, stmt.Reason) {
-					return PolicyTestOutput{
-						Decision:       Deny,
-						MatchedPattern: stmt.Reason,
-						MatchedSource:  s.name,
-						Message:        policyFmt(ctx, "SQL statement denied by policy: %s (%s)", "SQL 语句被策略禁止: %s (%s)", stmt.Reason, stmt.Raw),
-					}
-				}
-			}
-		}
-		if len(merged.AllowTypes) > 0 && !containsStrFold(merged.AllowTypes, stmt.Type) {
-			return PolicyTestOutput{Decision: NeedConfirm}
-		}
+	}
+	if result.Decision == NeedConfirm {
+		return PolicyTestOutput{Decision: NeedConfirm}
 	}
 
 	// 检查组通用 allow 规则
@@ -281,65 +245,34 @@ func testRedisPolicy(ctx context.Context, current *asset_entity.RedisPolicy, gro
 	}
 
 	// 类型专用策略：当前资产（含引用的权限组）
-	type source struct {
-		name   string
-		policy *asset_entity.RedisPolicy
-	}
-	var sources []source
-	if current != nil {
-		// 解析引用的权限组
-		if len(current.Groups) > 0 {
-			grpAllow, grpDeny := resolveRedisGroups(ctx, current.Groups)
-			current.AllowList = append(current.AllowList, grpAllow...)
-			current.DenyList = append(current.DenyList, grpDeny...)
-		}
-		sources = append(sources, source{"", current})
+	if current != nil && len(current.Groups) > 0 {
+		grpAllow, grpDeny := resolveRedisGroups(ctx, current.Groups)
+		current.AllowList = append(current.AllowList, grpAllow...)
+		current.DenyList = append(current.DenyList, grpDeny...)
 	}
 
-	// 合并
-	merged := &asset_entity.RedisPolicy{}
-	for _, s := range sources {
-		if len(merged.AllowList) == 0 && len(s.policy.AllowList) > 0 {
-			merged.AllowList = s.policy.AllowList
-		}
-		merged.DenyList = appendUnique(merged.DenyList, s.policy.DenyList...)
-	}
+	// 复用核心策略检查逻辑（不合并默认策略，仅检查用户配置的规则）
+	result := checkRedisPolicyRules(ctx, current, command)
 
-	// deny 检查
-	for _, s := range sources {
-		for _, rule := range s.policy.DenyList {
-			if MatchRedisRule(rule, command) {
-				return PolicyTestOutput{
-					Decision:       Deny,
-					MatchedPattern: rule,
-					MatchedSource:  s.name,
-					Message:        policyFmt(ctx, "Redis command denied by policy: %s", "Redis 命令被策略禁止: %s", command),
-				}
-			}
+	// deny 结果映射
+	if result.Decision == Deny {
+		return PolicyTestOutput{
+			Decision:       Deny,
+			MatchedPattern: result.MatchedPattern,
+			MatchedSource:  "", // 当前资产策略
+			Message:        result.Message,
 		}
 	}
 
-	// 检查组通用 allow 规则
+	// 检查组通用 allow 规则（优先于资产 allow 结论）
 	if out := checkGenericAllow(groupAllow, command, MatchRedisRule); out != nil {
 		return *out
 	}
 
-	// allow 检查（资产专用）
-	if len(merged.AllowList) > 0 {
-		for _, s := range sources {
-			for _, rule := range s.policy.AllowList {
-				if MatchRedisRule(rule, command) {
-					return PolicyTestOutput{
-						Decision:       Allow,
-						MatchedSource:  s.name,
-						MatchedPattern: rule,
-					}
-				}
-			}
-		}
+	// 映射资产策略结果（Allow 或 NeedConfirm）
+	if result.Decision == NeedConfirm {
 		return PolicyTestOutput{Decision: NeedConfirm}
 	}
-
 	return PolicyTestOutput{Decision: Allow}
 }
 
@@ -377,26 +310,6 @@ func resolveGroupChainForTest(ctx context.Context, assetID, groupID int64) []*gr
 		currentID = g.ParentID
 	}
 	return chain
-}
-
-// equalsIgnoreCase 大小写无关字符串比较
-func equalsIgnoreCase(a, b string) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for i := 0; i < len(a); i++ {
-		ca, cb := a[i], b[i]
-		if ca >= 'A' && ca <= 'Z' {
-			ca += 'a' - 'A'
-		}
-		if cb >= 'A' && cb <= 'Z' {
-			cb += 'a' - 'A'
-		}
-		if ca != cb {
-			return false
-		}
-	}
-	return true
 }
 
 // CheckGroupGenericPolicy 在真实执行路径中检查组的通用策略（CmdPolicy）。

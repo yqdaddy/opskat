@@ -6,7 +6,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { useQueryStore } from "@/stores/queryStore";
 import { useTabStore, type QueryTabMeta } from "@/stores/tabStore";
-import { ExecuteSQL } from "../../../wailsjs/go/main/App";
+import { ExecuteSQL } from "../../../wailsjs/go/app/App";
 import { QueryResultTable } from "./QueryResultTable";
 
 interface SqlEditorTabProps {

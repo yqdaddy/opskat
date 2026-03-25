@@ -22,7 +22,7 @@ import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { cn } from "@/lib/utils";
-import { SFTPListDir, SFTPGetwd, SFTPDelete } from "../../../wailsjs/go/main/App";
+import { SFTPListDir, SFTPGetwd, SFTPDelete } from "../../../wailsjs/go/app/App";
 import { OnFileDrop, OnFileDropOff } from "../../../wailsjs/runtime/runtime";
 import { useSFTPStore } from "@/stores/sftpStore";
 import { sftp_svc } from "../../../wailsjs/go/models";

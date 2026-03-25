@@ -722,6 +722,13 @@
     "deleteConfirmTitle": "Confirm Delete",
     "deleteConfirmDesc": "Are you sure you want to delete \"{{name}}\"? This cannot be undone."
   },
+  "error": {
+    "boundary": {
+      "title": "Something went wrong",
+      "message": "An unexpected error occurred. Please try reloading the page.",
+      "reload": "Reload"
+    }
+  },
   "query": {
     "newSql": "New Query",
     "execute": "Execute",

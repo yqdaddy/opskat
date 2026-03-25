@@ -13,6 +13,7 @@ import { GroupDialog } from "@/components/asset/GroupDialog";
 import { PermissionDialog } from "@/components/ai/PermissionDialog";
 import { OpsctlApprovalDialog } from "@/components/approval/OpsctlApprovalDialog";
 import { GrantApprovalDialog } from "@/components/approval/GrantApprovalDialog";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 
 import { useAssetStore } from "@/stores/assetStore";
 import { useTerminalStore } from "@/stores/terminalStore";
@@ -253,6 +254,7 @@ function App() {
 
   return (
     <ThemeProvider defaultTheme="system">
+      <ErrorBoundary>
       <TooltipProvider>
         <div className="flex h-screen w-screen overflow-hidden bg-background">
           <WindowControls />
@@ -328,6 +330,7 @@ function App() {
         <GrantApprovalDialog />
         <Toaster richColors />
       </TooltipProvider>
+      </ErrorBoundary>
     </ThemeProvider>
   );
 }

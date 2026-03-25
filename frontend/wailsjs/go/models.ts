@@ -90,6 +90,336 @@ export namespace ai {
 
 }
 
+export namespace app {
+	
+	export class AISettingInfo {
+	    providerType: string;
+	    apiBase: string;
+	    maskedApiKey: string;
+	    model: string;
+	    configured: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new AISettingInfo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.providerType = source["providerType"];
+	        this.apiBase = source["apiBase"];
+	        this.maskedApiKey = source["maskedApiKey"];
+	        this.model = source["model"];
+	        this.configured = source["configured"];
+	    }
+	}
+	export class AuditLogListResult {
+	    items: audit_entity.AuditLog[];
+	    total: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new AuditLogListResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.items = this.convertValues(source["items"], audit_entity.AuditLog);
+	        this.total = source["total"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class ConversationDisplayMessage {
+	    role: string;
+	    content: string;
+	    blocks: conversation_entity.ContentBlock[];
+	
+	    static createFrom(source: any = {}) {
+	        return new ConversationDisplayMessage(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.role = source["role"];
+	        this.content = source["content"];
+	        this.blocks = this.convertValues(source["blocks"], conversation_entity.ContentBlock);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class RuleWithStatus {
+	    id: number;
+	    configId: number;
+	    type: string;
+	    localHost: string;
+	    localPort: number;
+	    remoteHost: string;
+	    remotePort: number;
+	    createtime: number;
+	    updatetime: number;
+	    status: string;
+	    error?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new RuleWithStatus(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.configId = source["configId"];
+	        this.type = source["type"];
+	        this.localHost = source["localHost"];
+	        this.localPort = source["localPort"];
+	        this.remoteHost = source["remoteHost"];
+	        this.remotePort = source["remotePort"];
+	        this.createtime = source["createtime"];
+	        this.updatetime = source["updatetime"];
+	        this.status = source["status"];
+	        this.error = source["error"];
+	    }
+	}
+	export class ForwardConfigWithStatus {
+	    id: number;
+	    name: string;
+	    assetId: number;
+	    createtime: number;
+	    updatetime: number;
+	    assetName: string;
+	    rules: RuleWithStatus[];
+	    status: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new ForwardConfigWithStatus(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.assetId = source["assetId"];
+	        this.createtime = source["createtime"];
+	        this.updatetime = source["updatetime"];
+	        this.assetName = source["assetName"];
+	        this.rules = this.convertValues(source["rules"], RuleWithStatus);
+	        this.status = source["status"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class GrantItemEdit {
+	    asset_id: number;
+	    asset_name: string;
+	    group_id: number;
+	    group_name: string;
+	    command: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new GrantItemEdit(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.asset_id = source["asset_id"];
+	        this.asset_name = source["asset_name"];
+	        this.group_id = source["group_id"];
+	        this.group_name = source["group_name"];
+	        this.command = source["command"];
+	    }
+	}
+	export class ImportFileInfo {
+	    filePath: string;
+	    encrypted: boolean;
+	    summary?: backup_svc.BackupSummary;
+	
+	    static createFrom(source: any = {}) {
+	        return new ImportFileInfo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.filePath = source["filePath"];
+	        this.encrypted = source["encrypted"];
+	        this.summary = this.convertValues(source["summary"], backup_svc.BackupSummary);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class LocalSSHKeyInfo {
+	    path: string;
+	    keyType: string;
+	    fingerprint: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new LocalSSHKeyInfo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.path = source["path"];
+	        this.keyType = source["keyType"];
+	        this.fingerprint = source["fingerprint"];
+	    }
+	}
+	export class OpsctlInfo {
+	    installed: boolean;
+	    path: string;
+	    version: string;
+	    embedded: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new OpsctlInfo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.installed = source["installed"];
+	        this.path = source["path"];
+	        this.version = source["version"];
+	        this.embedded = source["embedded"];
+	    }
+	}
+	export class PolicyTestRequest {
+	    policyType: string;
+	    policyJSON: string;
+	    command: string;
+	    assetID: number;
+	    groupID: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new PolicyTestRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.policyType = source["policyType"];
+	        this.policyJSON = source["policyJSON"];
+	        this.command = source["command"];
+	        this.assetID = source["assetID"];
+	        this.groupID = source["groupID"];
+	    }
+	}
+	export class PolicyTestResult {
+	    decision: string;
+	    matchedPattern: string;
+	    matchedSource: string;
+	    message: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new PolicyTestResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.decision = source["decision"];
+	        this.matchedPattern = source["matchedPattern"];
+	        this.matchedSource = source["matchedSource"];
+	        this.message = source["message"];
+	    }
+	}
+	
+	export class SSHConnectRequest {
+	    assetId: number;
+	    password: string;
+	    key: string;
+	    cols: number;
+	    rows: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new SSHConnectRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.assetId = source["assetId"];
+	        this.password = source["password"];
+	        this.key = source["key"];
+	        this.cols = source["cols"];
+	        this.rows = source["rows"];
+	    }
+	}
+	export class SkillTarget {
+	    name: string;
+	    installed: boolean;
+	    path: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new SkillTarget(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.name = source["name"];
+	        this.installed = source["installed"];
+	        this.path = source["path"];
+	    }
+	}
+
+}
+
 export namespace asset_entity {
 	
 	export class Asset {
@@ -673,336 +1003,6 @@ export namespace import_svc {
 		    }
 		    return a;
 		}
-	}
-
-}
-
-export namespace main {
-	
-	export class AISettingInfo {
-	    providerType: string;
-	    apiBase: string;
-	    maskedApiKey: string;
-	    model: string;
-	    configured: boolean;
-	
-	    static createFrom(source: any = {}) {
-	        return new AISettingInfo(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.providerType = source["providerType"];
-	        this.apiBase = source["apiBase"];
-	        this.maskedApiKey = source["maskedApiKey"];
-	        this.model = source["model"];
-	        this.configured = source["configured"];
-	    }
-	}
-	export class AuditLogListResult {
-	    items: audit_entity.AuditLog[];
-	    total: number;
-	
-	    static createFrom(source: any = {}) {
-	        return new AuditLogListResult(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.items = this.convertValues(source["items"], audit_entity.AuditLog);
-	        this.total = source["total"];
-	    }
-	
-		convertValues(a: any, classs: any, asMap: boolean = false): any {
-		    if (!a) {
-		        return a;
-		    }
-		    if (a.slice && a.map) {
-		        return (a as any[]).map(elem => this.convertValues(elem, classs));
-		    } else if ("object" === typeof a) {
-		        if (asMap) {
-		            for (const key of Object.keys(a)) {
-		                a[key] = new classs(a[key]);
-		            }
-		            return a;
-		        }
-		        return new classs(a);
-		    }
-		    return a;
-		}
-	}
-	export class ConversationDisplayMessage {
-	    role: string;
-	    content: string;
-	    blocks: conversation_entity.ContentBlock[];
-	
-	    static createFrom(source: any = {}) {
-	        return new ConversationDisplayMessage(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.role = source["role"];
-	        this.content = source["content"];
-	        this.blocks = this.convertValues(source["blocks"], conversation_entity.ContentBlock);
-	    }
-	
-		convertValues(a: any, classs: any, asMap: boolean = false): any {
-		    if (!a) {
-		        return a;
-		    }
-		    if (a.slice && a.map) {
-		        return (a as any[]).map(elem => this.convertValues(elem, classs));
-		    } else if ("object" === typeof a) {
-		        if (asMap) {
-		            for (const key of Object.keys(a)) {
-		                a[key] = new classs(a[key]);
-		            }
-		            return a;
-		        }
-		        return new classs(a);
-		    }
-		    return a;
-		}
-	}
-	export class RuleWithStatus {
-	    id: number;
-	    configId: number;
-	    type: string;
-	    localHost: string;
-	    localPort: number;
-	    remoteHost: string;
-	    remotePort: number;
-	    createtime: number;
-	    updatetime: number;
-	    status: string;
-	    error?: string;
-	
-	    static createFrom(source: any = {}) {
-	        return new RuleWithStatus(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.id = source["id"];
-	        this.configId = source["configId"];
-	        this.type = source["type"];
-	        this.localHost = source["localHost"];
-	        this.localPort = source["localPort"];
-	        this.remoteHost = source["remoteHost"];
-	        this.remotePort = source["remotePort"];
-	        this.createtime = source["createtime"];
-	        this.updatetime = source["updatetime"];
-	        this.status = source["status"];
-	        this.error = source["error"];
-	    }
-	}
-	export class ForwardConfigWithStatus {
-	    id: number;
-	    name: string;
-	    assetId: number;
-	    createtime: number;
-	    updatetime: number;
-	    assetName: string;
-	    rules: RuleWithStatus[];
-	    status: string;
-	
-	    static createFrom(source: any = {}) {
-	        return new ForwardConfigWithStatus(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.id = source["id"];
-	        this.name = source["name"];
-	        this.assetId = source["assetId"];
-	        this.createtime = source["createtime"];
-	        this.updatetime = source["updatetime"];
-	        this.assetName = source["assetName"];
-	        this.rules = this.convertValues(source["rules"], RuleWithStatus);
-	        this.status = source["status"];
-	    }
-	
-		convertValues(a: any, classs: any, asMap: boolean = false): any {
-		    if (!a) {
-		        return a;
-		    }
-		    if (a.slice && a.map) {
-		        return (a as any[]).map(elem => this.convertValues(elem, classs));
-		    } else if ("object" === typeof a) {
-		        if (asMap) {
-		            for (const key of Object.keys(a)) {
-		                a[key] = new classs(a[key]);
-		            }
-		            return a;
-		        }
-		        return new classs(a);
-		    }
-		    return a;
-		}
-	}
-	export class GrantItemEdit {
-	    asset_id: number;
-	    asset_name: string;
-	    group_id: number;
-	    group_name: string;
-	    command: string;
-	
-	    static createFrom(source: any = {}) {
-	        return new GrantItemEdit(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.asset_id = source["asset_id"];
-	        this.asset_name = source["asset_name"];
-	        this.group_id = source["group_id"];
-	        this.group_name = source["group_name"];
-	        this.command = source["command"];
-	    }
-	}
-	export class ImportFileInfo {
-	    filePath: string;
-	    encrypted: boolean;
-	    summary?: backup_svc.BackupSummary;
-	
-	    static createFrom(source: any = {}) {
-	        return new ImportFileInfo(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.filePath = source["filePath"];
-	        this.encrypted = source["encrypted"];
-	        this.summary = this.convertValues(source["summary"], backup_svc.BackupSummary);
-	    }
-	
-		convertValues(a: any, classs: any, asMap: boolean = false): any {
-		    if (!a) {
-		        return a;
-		    }
-		    if (a.slice && a.map) {
-		        return (a as any[]).map(elem => this.convertValues(elem, classs));
-		    } else if ("object" === typeof a) {
-		        if (asMap) {
-		            for (const key of Object.keys(a)) {
-		                a[key] = new classs(a[key]);
-		            }
-		            return a;
-		        }
-		        return new classs(a);
-		    }
-		    return a;
-		}
-	}
-	export class LocalSSHKeyInfo {
-	    path: string;
-	    keyType: string;
-	    fingerprint: string;
-	
-	    static createFrom(source: any = {}) {
-	        return new LocalSSHKeyInfo(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.path = source["path"];
-	        this.keyType = source["keyType"];
-	        this.fingerprint = source["fingerprint"];
-	    }
-	}
-	export class OpsctlInfo {
-	    installed: boolean;
-	    path: string;
-	    version: string;
-	    embedded: boolean;
-	
-	    static createFrom(source: any = {}) {
-	        return new OpsctlInfo(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.installed = source["installed"];
-	        this.path = source["path"];
-	        this.version = source["version"];
-	        this.embedded = source["embedded"];
-	    }
-	}
-	export class PolicyTestRequest {
-	    policyType: string;
-	    policyJSON: string;
-	    command: string;
-	    assetID: number;
-	    groupID: number;
-	
-	    static createFrom(source: any = {}) {
-	        return new PolicyTestRequest(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.policyType = source["policyType"];
-	        this.policyJSON = source["policyJSON"];
-	        this.command = source["command"];
-	        this.assetID = source["assetID"];
-	        this.groupID = source["groupID"];
-	    }
-	}
-	export class PolicyTestResult {
-	    decision: string;
-	    matchedPattern: string;
-	    matchedSource: string;
-	    message: string;
-	
-	    static createFrom(source: any = {}) {
-	        return new PolicyTestResult(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.decision = source["decision"];
-	        this.matchedPattern = source["matchedPattern"];
-	        this.matchedSource = source["matchedSource"];
-	        this.message = source["message"];
-	    }
-	}
-	
-	export class SSHConnectRequest {
-	    assetId: number;
-	    password: string;
-	    key: string;
-	    cols: number;
-	    rows: number;
-	
-	    static createFrom(source: any = {}) {
-	        return new SSHConnectRequest(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.assetId = source["assetId"];
-	        this.password = source["password"];
-	        this.key = source["key"];
-	        this.cols = source["cols"];
-	        this.rows = source["rows"];
-	    }
-	}
-	export class SkillTarget {
-	    name: string;
-	    installed: boolean;
-	    path: string;
-	
-	    static createFrom(source: any = {}) {
-	        return new SkillTarget(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.name = source["name"];
-	        this.installed = source["installed"];
-	        this.path = source["path"];
-	    }
 	}
 
 }

@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"runtime"
 
+	"github.com/opskat/opskat/internal/app"
 	"github.com/opskat/opskat/internal/bootstrap"
 
 	"github.com/cago-frame/cago/pkg/logger"
@@ -18,6 +19,18 @@ import (
 
 //go:embed all:frontend/dist
 var assets embed.FS
+
+//go:embed skill/SKILL.md
+var skillMDContent string
+
+//go:embed skill/references/commands.md
+var skillCommandsMDContent string
+
+//go:embed skill/references/ops-init.md
+var skillOpsInitMDContent string
+
+//go:embed skill/init.md
+var skillInitMDContent string
 
 func main() {
 	ctx := context.Background()
@@ -46,7 +59,12 @@ func main() {
 	logger.SetLogger(zapLogger)
 
 	// 创建 Wails App
-	app := NewApp()
+	a := app.NewApp(app.SkillContent{
+		SkillMD:    skillMDContent,
+		CommandsMD: skillCommandsMDContent,
+		OpsInitMD:  skillOpsInitMDContent,
+		InitMD:     skillInitMDContent,
+	})
 
 	err = wails.Run(&options.App{
 		Title:     "OpsKat",
@@ -56,10 +74,10 @@ func main() {
 		AssetServer: &assetserver.Options{
 			Assets: assets,
 		},
-		OnStartup:  app.startup,
-		OnShutdown: func(ctx context.Context) { app.cleanup() },
+		OnStartup:  a.Startup,
+		OnShutdown: func(ctx context.Context) { a.Cleanup() },
 		Bind: []interface{}{
-			app,
+			a,
 		},
 		DragAndDrop: &options.DragAndDrop{
 			EnableFileDrop:     true,

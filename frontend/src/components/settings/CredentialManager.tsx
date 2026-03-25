@@ -20,7 +20,7 @@ import {
   GetCredentialUsage,
   CreatePasswordCredential,
   UpdateCredentialPassword,
-} from "../../../wailsjs/go/main/App";
+} from "../../../wailsjs/go/app/App";
 import { credential_entity } from "../../../wailsjs/go/models";
 
 function generatePassword(length = 20): string {

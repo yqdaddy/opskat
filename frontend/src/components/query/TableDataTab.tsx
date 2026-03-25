@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useTabStore, type QueryTabMeta } from "@/stores/tabStore";
-import { ExecuteSQL } from "../../../wailsjs/go/main/App";
+import { ExecuteSQL } from "../../../wailsjs/go/app/App";
 import { QueryResultTable, CellEdit } from "./QueryResultTable";
 import { SqlPreviewDialog } from "./SqlPreviewDialog";
 import { toast } from "sonner";

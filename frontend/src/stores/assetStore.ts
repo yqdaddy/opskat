@@ -10,7 +10,7 @@ import {
   CreateGroup,
   UpdateGroup,
   DeleteGroup,
-} from "../../wailsjs/go/main/App";
+} from "../../wailsjs/go/app/App";
 
 interface AssetState {
   assets: asset_entity.Asset[];

@@ -11,8 +11,8 @@ import {
   SwitchConversation,
   DeleteConversation,
   SaveConversationMessages,
-} from "../../wailsjs/go/main/App";
-import { ai, conversation_entity, main } from "../../wailsjs/go/models";
+} from "../../wailsjs/go/app/App";
+import { ai, conversation_entity, app } from "../../wailsjs/go/models";
 import { EventsOn } from "../../wailsjs/runtime/runtime";
 import i18n from "../i18n";
 import { useTabStore, registerTabCloseHook, registerTabRestoreHook, type AITabMeta, type Tab } from "./tabStore";
@@ -88,12 +88,12 @@ function appendText(blocks: ContentBlock[], text: string): ContentBlock[] {
   return newBlocks;
 }
 
-function toDisplayMessages(msgs: ChatMessage[]): main.ConversationDisplayMessage[] {
+function toDisplayMessages(msgs: ChatMessage[]): app.ConversationDisplayMessage[] {
   return msgs
     .filter((m) => !m.streaming)
     .map(
       (m) =>
-        new main.ConversationDisplayMessage({
+        new app.ConversationDisplayMessage({
           role: m.role,
           content: m.content,
           blocks: m.blocks.map(
@@ -110,8 +110,8 @@ function toDisplayMessages(msgs: ChatMessage[]): main.ConversationDisplayMessage
     );
 }
 
-function convertDisplayMessages(displayMsgs: main.ConversationDisplayMessage[]): ChatMessage[] {
-  return (displayMsgs || []).map((dm: main.ConversationDisplayMessage) => ({
+function convertDisplayMessages(displayMsgs: app.ConversationDisplayMessage[]): ChatMessage[] {
+  return (displayMsgs || []).map((dm: app.ConversationDisplayMessage) => ({
     role: dm.role as "user" | "assistant" | "tool",
     content: dm.content,
     blocks: (dm.blocks || []).map((b: conversation_entity.ContentBlock) => ({

@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
-import { PreviewImportFile, ExecuteImportFile } from "../../../wailsjs/go/main/App";
+import { PreviewImportFile, ExecuteImportFile } from "../../../wailsjs/go/app/App";
 import { backup_svc } from "../../../wailsjs/go/models";
 import { useAssetStore } from "@/stores/assetStore";
 import { useShortcutStore } from "@/stores/shortcutStore";

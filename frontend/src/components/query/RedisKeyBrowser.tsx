@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { useQueryStore } from "@/stores/queryStore";
 import { useTabStore, type QueryTabMeta } from "@/stores/tabStore";
-import { ExecuteRedisArgs } from "../../../wailsjs/go/main/App";
+import { ExecuteRedisArgs } from "../../../wailsjs/go/app/App";
 
 interface RedisKeyBrowserProps {
   tabId: string;
