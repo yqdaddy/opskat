@@ -62,6 +62,7 @@ jobs:
     env:
       VERSION: ${{ needs.prepare.outputs.version }}
     strategy:
+      fail-fast: false
       matrix:
         include:
           - os: macos-latest
@@ -135,7 +136,7 @@ jobs:
           cp build/appicon.png ${PKG_ROOT}/usr/share/icons/hicolor/256x256/apps/opskat.png
           cat > ${PKG_ROOT}/DEBIAN/control << CTRL
           Package: opskat
-          Version: ${VERSION}
+          Version: 0.0.0~${VERSION}
           Section: utils
           Priority: optional
           Architecture: amd64
