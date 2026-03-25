@@ -1,11 +1,13 @@
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useMemo } from "react";
 import { useTranslation } from "react-i18next";
-import { Key, Loader2, Send, ChevronRight, Trash2, Pencil, Check, X, Plus } from "lucide-react";
+import { Key, Loader2, Send, ChevronRight, Trash2, Pencil, Check, X, Plus, RefreshCw, Copy } from "lucide-react";
+import { toast } from "sonner";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { useQueryStore, RedisKeyInfo } from "@/stores/queryStore";
 import { useTabStore, type QueryTabMeta } from "@/stores/tabStore";
 import { ExecuteRedis, ExecuteRedisArgs } from "../../../wailsjs/go/main/App";
@@ -156,7 +158,6 @@ function AddRowForm({
   const [value, setValue] = useState("");
   const [score, setScore] = useState("0");
   const [adding, setAdding] = useState(false);
-
   const submit = async () => {
     setAdding(true);
     try {
@@ -248,6 +249,7 @@ function CollectionTable({ info, tabId, t }: {
   const itemCount = getItemCount(info);
   const selectedKey = state?.selectedKey;
   const db = state?.currentDb ?? 0;
+  const [deleteTarget, setDeleteTarget] = useState<{ label: string; action: () => void } | null>(null);
 
   const virtualizer = useVirtualizer({
     count: itemCount,
@@ -418,15 +420,25 @@ function CollectionTable({ info, tabId, t }: {
                 <button
                   className="mr-1 hidden shrink-0 group-hover/row:inline-flex"
                   onClick={() => {
+                    let label = "";
+                    let action = () => {};
                     if (info.type === "hash") {
-                      handleDeleteHash((info.value as [string, string][])[idx][0]);
+                      const field = (info.value as [string, string][])[idx][0];
+                      label = field;
+                      action = () => handleDeleteHash(field);
                     } else if (info.type === "list") {
-                      handleDeleteList(idx);
+                      label = `index ${idx}`;
+                      action = () => handleDeleteList(idx);
                     } else if (info.type === "set") {
-                      handleDeleteSet((info.value as string[])[idx]);
+                      const member = (info.value as string[])[idx];
+                      label = member;
+                      action = () => handleDeleteSet(member);
                     } else if (info.type === "zset") {
-                      handleDeleteZset((info.value as [string, string][])[idx][0]);
+                      const member = (info.value as [string, string][])[idx][0];
+                      label = member;
+                      action = () => handleDeleteZset(member);
                     }
+                    setDeleteTarget({ label, action });
                   }}
                 >
                   <Trash2 className="size-3 text-muted-foreground hover:text-destructive" />
@@ -457,6 +469,17 @@ function CollectionTable({ info, tabId, t }: {
 
       {/* Add row */}
       <AddRowForm type={info.type} onAdd={handleAdd} t={t} />
+
+      {/* Delete element confirm */}
+      <ConfirmDialog
+        open={!!deleteTarget}
+        onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}
+        title={t("query.deleteElementTitle")}
+        description={t("query.deleteElementDesc", { name: deleteTarget?.label ?? "" })}
+        cancelText={t("action.cancel")}
+        confirmText={t("action.delete")}
+        onConfirm={() => { deleteTarget?.action(); setDeleteTarget(null); }}
+      />
     </div>
   );
 }
@@ -471,10 +494,34 @@ function StringEditor({ tabId, t }: { tabId: string; t: (key: string) => string 
   const [editing, setEditing] = useState(false);
   const [editVal, setEditVal] = useState("");
   const [saving, setSaving] = useState(false);
+  const [jsonFormatted, setJsonFormatted] = useState(true);
+
+  const originalVal = String(state?.keyInfo?.value ?? "");
+
+  const isJson = useMemo(() => {
+    try {
+      const trimmed = originalVal.trim();
+      if (!trimmed.startsWith("{") && !trimmed.startsWith("[")) return false;
+      JSON.parse(trimmed);
+      return true;
+    } catch {
+      return false;
+    }
+  }, [originalVal]);
+
+  const displayValue = useMemo(() => {
+    if (isJson && jsonFormatted) {
+      try {
+        return JSON.stringify(JSON.parse(originalVal), null, 2);
+      } catch {
+        return originalVal;
+      }
+    }
+    return originalVal;
+  }, [isJson, jsonFormatted, originalVal]);
 
   if (!state?.keyInfo || !state.selectedKey || !tabMeta) return null;
 
-  const originalVal = String(state.keyInfo.value ?? "");
   const db = state.currentDb;
 
   const startEdit = () => {
@@ -520,9 +567,28 @@ function StringEditor({ tabId, t }: { tabId: string; t: (key: string) => string 
   return (
     <ScrollArea className="flex-1">
       <div className="p-3">
+        {/* JSON format toggle */}
+        {isJson && (
+          <div className="mb-2 flex justify-end">
+            <div className="inline-flex rounded-md border text-xs">
+              <button
+                className={`px-2 py-0.5 rounded-l-md ${jsonFormatted ? "bg-accent text-accent-foreground" : ""}`}
+                onClick={() => setJsonFormatted(true)}
+              >
+                {t("query.formatJson")}
+              </button>
+              <button
+                className={`px-2 py-0.5 rounded-r-md ${!jsonFormatted ? "bg-accent text-accent-foreground" : ""}`}
+                onClick={() => setJsonFormatted(false)}
+              >
+                {t("query.rawText")}
+              </button>
+            </div>
+          </div>
+        )}
         <div className="group/str relative">
           <pre className="whitespace-pre-wrap break-all rounded border bg-muted/50 p-3 font-mono text-xs">
-            {originalVal}
+            {displayValue}
           </pre>
           <Button
             variant="ghost"
@@ -542,7 +608,7 @@ function StringEditor({ tabId, t }: { tabId: string; t: (key: string) => string 
 
 export function RedisKeyDetail({ tabId }: RedisKeyDetailProps) {
   const { t } = useTranslation();
-  const { redisStates, removeKey, loadDbKeyCounts } = useQueryStore();
+  const { redisStates, removeKey, loadDbKeyCounts, selectKey } = useQueryStore();
   const state = redisStates[tabId];
   const tab = useTabStore((s) => s.tabs.find((tb) => tb.id === tabId));
   const tabMeta = tab?.meta as QueryTabMeta | undefined;
@@ -554,7 +620,11 @@ export function RedisKeyDetail({ tabId }: RedisKeyDetailProps) {
   const [history, setHistory] = useState<string[]>([]);
   const [historyIdx, setHistoryIdx] = useState(-1);
   const [deleting, setDeleting] = useState(false);
+  const [showDeleteKeyConfirm, setShowDeleteKeyConfirm] = useState(false);
+  const [editingTtl, setEditingTtl] = useState(false);
+  const [ttlInput, setTtlInput] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
+  const ttlInputRef = useRef<HTMLInputElement>(null);
 
   const executeCommand = useCallback(async () => {
     if (!command.trim() || !tabMeta || !state) return;
@@ -621,30 +691,52 @@ export function RedisKeyDetail({ tabId }: RedisKeyDetailProps) {
     setDeleting(false);
   }, [tabMeta, state, tabId, removeKey, loadDbKeyCounts]);
 
+  const handleRefreshKey = useCallback(() => {
+    if (state?.selectedKey) {
+      selectKey(tabId, state.selectedKey);
+    }
+  }, [state?.selectedKey, tabId, selectKey]);
+
+  const handleCopyKeyName = useCallback(() => {
+    if (state?.selectedKey) {
+      navigator.clipboard.writeText(state.selectedKey);
+      toast.success(t("query.copied"));
+    }
+  }, [state?.selectedKey, t]);
+
+  const startTtlEdit = useCallback(() => {
+    if (!state?.keyInfo) return;
+    setTtlInput(state.keyInfo.ttl > 0 ? String(state.keyInfo.ttl) : "");
+    setEditingTtl(true);
+    setTimeout(() => ttlInputRef.current?.focus(), 0);
+  }, [state?.keyInfo]);
+
+  const saveTtl = useCallback(async () => {
+    if (!tabMeta || !state?.selectedKey) return;
+    const seconds = parseInt(ttlInput, 10);
+    if (isNaN(seconds) || seconds <= 0) return;
+    try {
+      await ExecuteRedisArgs(tabMeta.assetId, ["EXPIRE", state.selectedKey, String(seconds)], state.currentDb);
+      selectKey(tabId, state.selectedKey);
+    } catch { /* ignore */ }
+    setEditingTtl(false);
+  }, [tabMeta, state, ttlInput, tabId, selectKey]);
+
+  const persistKey = useCallback(async () => {
+    if (!tabMeta || !state?.selectedKey) return;
+    try {
+      await ExecuteRedisArgs(tabMeta.assetId, ["PERSIST", state.selectedKey], state.currentDb);
+      selectKey(tabId, state.selectedKey);
+    } catch { /* ignore */ }
+    setEditingTtl(false);
+  }, [tabMeta, state, tabId, selectKey]);
+
   if (!state) return null;
 
-  // No key selected
-  if (!state.selectedKey) {
-    return (
-      <div className="flex h-full items-center justify-center text-muted-foreground">
-        <div className="text-center">
-          <Key className="mx-auto mb-2 size-8 opacity-40" />
-          <p className="text-sm">{t("query.noKeySelected")}</p>
-        </div>
-      </div>
-    );
-  }
-
-  // Key selected but info loading
-  if (!state.keyInfo) {
-    return (
-      <div className="flex h-full items-center justify-center">
-        <Loader2 className="size-5 animate-spin text-muted-foreground" />
-      </div>
-    );
-  }
-
-  const { type, ttl } = state.keyInfo;
+  const hasKey = !!state.selectedKey;
+  const keyInfo = state.keyInfo;
+  const type = keyInfo?.type;
+  const ttl = keyInfo?.ttl ?? -1;
   const isCollection = type === "hash" || type === "list" || type === "set" || type === "zset";
 
   const ttlDisplay =
@@ -654,47 +746,113 @@ export function RedisKeyDetail({ tabId }: RedisKeyDetailProps) {
 
   return (
     <div className="flex h-full flex-col">
-      {/* Header */}
-      <div className="flex items-center gap-2 border-b px-3 py-2">
-        <Key className="size-3.5 shrink-0 text-muted-foreground" />
-        <span className="truncate font-mono text-sm font-medium">
-          {state.selectedKey}
-        </span>
-        <span
-          className={`inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium ${TYPE_COLORS[type] || "bg-muted text-muted-foreground"}`}
-        >
-          {type}
-        </span>
-        <span className="text-xs text-muted-foreground">
-          {t("query.ttl")}: {ttlDisplay}
-        </span>
-        <div className="ml-auto">
-          <Button
-            variant="ghost"
-            size="icon-xs"
-            onClick={handleDeleteKey}
-            disabled={deleting}
-            title={t("query.deleteKey")}
-          >
-            {deleting ? (
-              <Loader2 className="size-3.5 animate-spin" />
+      {/* Main content area */}
+      <div className="flex-1 min-h-0 flex flex-col">
+        {!hasKey ? (
+          <div className="flex flex-1 items-center justify-center text-muted-foreground">
+            <div className="text-center">
+              <Key className="mx-auto mb-2 size-8 opacity-40" />
+              <p className="text-sm">{t("query.noKeySelected")}</p>
+            </div>
+          </div>
+        ) : !keyInfo ? (
+          <div className="flex flex-1 items-center justify-center">
+            <Loader2 className="size-5 animate-spin text-muted-foreground" />
+          </div>
+        ) : (
+          <>
+            {/* Header */}
+            <div className="flex items-center gap-2 border-b px-3 py-2">
+              <Key className="size-3.5 shrink-0 text-muted-foreground" />
+              <span className="truncate font-mono text-sm font-medium">
+                {state.selectedKey}
+              </span>
+              <Button
+                variant="ghost"
+                size="icon-xs"
+                onClick={handleCopyKeyName}
+                title={t("query.copyKeyName")}
+              >
+                <Copy className="size-3 text-muted-foreground" />
+              </Button>
+              <span
+                className={`inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium ${TYPE_COLORS[type!] || "bg-muted text-muted-foreground"}`}
+              >
+                {type}
+              </span>
+              {/* TTL - editable */}
+              {editingTtl ? (
+                <div className="flex items-center gap-1">
+                  <Input
+                    ref={ttlInputRef}
+                    className="h-6 w-20 font-mono text-xs"
+                    placeholder={t("query.ttlInput")}
+                    value={ttlInput}
+                    onChange={(e) => setTtlInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") saveTtl();
+                      if (e.key === "Escape") setEditingTtl(false);
+                    }}
+                  />
+                  <Button variant="ghost" size="sm" className="h-6 text-xs" onClick={saveTtl}>
+                    {t("query.setTtl")}
+                  </Button>
+                  {ttl > 0 && (
+                    <Button variant="ghost" size="sm" className="h-6 text-xs" onClick={persistKey}>
+                      {t("query.persist")}
+                    </Button>
+                  )}
+                  <Button variant="ghost" size="icon-xs" onClick={() => setEditingTtl(false)}>
+                    <X className="size-3" />
+                  </Button>
+                </div>
+              ) : (
+                <span
+                  className="text-xs text-muted-foreground cursor-pointer hover:text-foreground"
+                  onClick={startTtlEdit}
+                  title={t("query.setTtl")}
+                >
+                  {t("query.ttl")}: {ttlDisplay}
+                </span>
+              )}
+              <div className="ml-auto flex items-center gap-0.5">
+                <Button
+                  variant="ghost"
+                  size="icon-xs"
+                  onClick={handleRefreshKey}
+                  title={t("query.refreshKey")}
+                >
+                  <RefreshCw className="size-3.5 text-muted-foreground" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon-xs"
+                  onClick={() => setShowDeleteKeyConfirm(true)}
+                  disabled={deleting}
+                  title={t("query.deleteKey")}
+                >
+                  {deleting ? (
+                    <Loader2 className="size-3.5 animate-spin" />
+                  ) : (
+                    <Trash2 className="size-3.5 text-muted-foreground hover:text-destructive" />
+                  )}
+                </Button>
+              </div>
+            </div>
+
+            {/* Value display */}
+            {isCollection ? (
+              <div className="min-h-0 flex-1">
+                <CollectionTable info={keyInfo} tabId={tabId} t={t} />
+              </div>
             ) : (
-              <Trash2 className="size-3.5 text-muted-foreground hover:text-destructive" />
+              <StringEditor tabId={tabId} t={t} />
             )}
-          </Button>
-        </div>
+          </>
+        )}
       </div>
 
-      {/* Value display */}
-      {isCollection ? (
-        <div className="min-h-0 flex-1">
-          <CollectionTable info={state.keyInfo} tabId={tabId} t={t} />
-        </div>
-      ) : (
-        <StringEditor tabId={tabId} t={t} />
-      )}
-
-      {/* Command input */}
+      {/* Command input - always visible */}
       <div className="border-t">
         <div className="flex items-center gap-1 px-2 py-1.5">
           <ChevronRight className="size-3.5 shrink-0 text-muted-foreground" />
@@ -724,21 +882,39 @@ export function RedisKeyDetail({ tabId }: RedisKeyDetailProps) {
           </Button>
         </div>
 
-        {/* Command result */}
+        {/* Command result - scrollable with clear */}
         {(cmdResult !== null || cmdError !== null) && (
-          <div className="border-t px-3 py-2">
+          <div className="relative border-t max-h-[200px] overflow-auto px-3 py-2">
+            <button
+              className="absolute right-2 top-2"
+              onClick={() => { setCmdResult(null); setCmdError(null); }}
+              title={t("query.clearResult")}
+            >
+              <X className="size-3 text-muted-foreground hover:text-foreground" />
+            </button>
             {cmdError ? (
-              <pre className="whitespace-pre-wrap font-mono text-xs text-destructive">
+              <pre className="whitespace-pre-wrap font-mono text-xs text-destructive pr-6">
                 {t("query.error")}: {cmdError}
               </pre>
             ) : (
-              <pre className="whitespace-pre-wrap font-mono text-xs text-foreground">
+              <pre className="whitespace-pre-wrap font-mono text-xs text-foreground pr-6">
                 {cmdResult}
               </pre>
             )}
           </div>
         )}
       </div>
+
+      {/* Delete key confirm */}
+      <ConfirmDialog
+        open={showDeleteKeyConfirm}
+        onOpenChange={setShowDeleteKeyConfirm}
+        title={t("query.deleteKey")}
+        description={t("query.deleteKeyConfirmDesc", { name: state.selectedKey ?? "" })}
+        cancelText={t("action.cancel")}
+        confirmText={t("action.delete")}
+        onConfirm={handleDeleteKey}
+      />
     </div>
   );
 }

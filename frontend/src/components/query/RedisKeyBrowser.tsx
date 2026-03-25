@@ -1,7 +1,9 @@
-import { useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useTranslation } from "react-i18next";
-import { Database, RefreshCw, Loader2, Search, Key, AlertCircle } from "lucide-react";
+import { createPortal } from "react-dom";
+import { Database, RefreshCw, Loader2, Search, Key, AlertCircle, Copy, Trash2 } from "lucide-react";
 import { useVirtualizer } from "@tanstack/react-virtual";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -11,7 +13,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { useQueryStore } from "@/stores/queryStore";
+import { useTabStore, type QueryTabMeta } from "@/stores/tabStore";
+import { ExecuteRedisArgs } from "../../../wailsjs/go/main/App";
 
 interface RedisKeyBrowserProps {
   tabId: string;
@@ -21,11 +26,18 @@ const KEY_ROW_HEIGHT = 28;
 
 export function RedisKeyBrowser({ tabId }: RedisKeyBrowserProps) {
   const { t } = useTranslation();
-  const { redisStates, scanKeys, selectRedisDb, selectKey, setKeyFilter, loadDbKeyCounts } =
+  const { redisStates, scanKeys, selectRedisDb, selectKey, setKeyFilter, loadDbKeyCounts, removeKey } =
     useQueryStore();
   const state = redisStates[tabId];
+  const tab = useTabStore((s) => s.tabs.find((tb) => tb.id === tabId));
+  const tabMeta = tab?.meta as QueryTabMeta | undefined;
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  // Context menu state
+  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; key: string } | null>(null);
+  const ctxMenuRef = useRef<HTMLDivElement>(null);
+  const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
 
   const virtualizer = useVirtualizer({
     count: state?.keys.length ?? 0,
@@ -38,6 +50,26 @@ export function RedisKeyBrowser({ tabId }: RedisKeyBrowserProps) {
     scanKeys(tabId, true);
     loadDbKeyCounts(tabId);
   }, [tabId, scanKeys, loadDbKeyCounts]);
+
+  // Close context menu on outside click / escape
+  useEffect(() => {
+    if (!ctxMenu) return;
+    const close = () => setCtxMenu(null);
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") close(); };
+    const onPointer = (e: PointerEvent) => {
+      if (ctxMenuRef.current?.contains(e.target as Node)) return;
+      close();
+    };
+    const timer = setTimeout(() => {
+      document.addEventListener("pointerdown", onPointer, true);
+    }, 50);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      clearTimeout(timer);
+      document.removeEventListener("pointerdown", onPointer, true);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [ctxMenu]);
 
   const handleDbChange = useCallback(
     (value: string) => {
@@ -76,6 +108,29 @@ export function RedisKeyBrowser({ tabId }: RedisKeyBrowserProps) {
     },
     [tabId, selectKey]
   );
+
+  const handleCopyKeyName = useCallback(() => {
+    if (!ctxMenu) return;
+    navigator.clipboard.writeText(ctxMenu.key);
+    toast.success(t("query.copied"));
+    setCtxMenu(null);
+  }, [ctxMenu, t]);
+
+  const handleDeleteFromCtx = useCallback(() => {
+    if (!ctxMenu) return;
+    setDeleteTarget(ctxMenu.key);
+    setCtxMenu(null);
+  }, [ctxMenu]);
+
+  const confirmDelete = useCallback(async () => {
+    if (!deleteTarget || !tabMeta || !state) return;
+    try {
+      await ExecuteRedisArgs(tabMeta.assetId, ["DEL", deleteTarget], state.currentDb);
+      removeKey(tabId, deleteTarget);
+      loadDbKeyCounts(tabId);
+    } catch { /* ignore */ }
+    setDeleteTarget(null);
+  }, [deleteTarget, tabMeta, state, tabId, removeKey, loadDbKeyCounts]);
 
   if (!state) return null;
 
@@ -167,6 +222,11 @@ export function RedisKeyBrowser({ tabId }: RedisKeyBrowserProps) {
                   height: virtualRow.size,
                 }}
                 onClick={() => handleSelectKey(key)}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setCtxMenu({ x: e.clientX, y: e.clientY, key });
+                }}
               >
                 <Key className="size-3 shrink-0 text-muted-foreground" />
                 <span className="truncate">{key}</span>
@@ -195,6 +255,44 @@ export function RedisKeyBrowser({ tabId }: RedisKeyBrowserProps) {
           </Button>
         </div>
       )}
+
+      {/* Key context menu */}
+      {ctxMenu && createPortal(
+        <div
+          ref={ctxMenuRef}
+          className="z-50 min-w-[8rem] overflow-hidden rounded-md border bg-popover p-1 text-popover-foreground shadow-md animate-in fade-in-0 zoom-in-95"
+          style={{ position: "fixed", top: ctxMenu.y + 2, left: ctxMenu.x + 2 }}
+        >
+          <div
+            role="menuitem"
+            className="relative flex cursor-default items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-hidden select-none hover:bg-accent hover:text-accent-foreground [&_svg]:pointer-events-none [&_svg]:shrink-0"
+            onClick={handleCopyKeyName}
+          >
+            <Copy className="size-3.5" />
+            {t("query.copyKeyName")}
+          </div>
+          <div
+            role="menuitem"
+            className="relative flex cursor-default items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-hidden select-none hover:bg-accent hover:text-accent-foreground text-destructive [&_svg]:pointer-events-none [&_svg]:shrink-0"
+            onClick={handleDeleteFromCtx}
+          >
+            <Trash2 className="size-3.5" />
+            {t("query.deleteKey")}
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* Delete key confirm */}
+      <ConfirmDialog
+        open={!!deleteTarget}
+        onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}
+        title={t("query.deleteKey")}
+        description={t("query.deleteKeyConfirmDesc", { name: deleteTarget ?? "" })}
+        cancelText={t("action.cancel")}
+        confirmText={t("action.delete")}
+        onConfirm={confirmDelete}
+      />
     </div>
   );
 }

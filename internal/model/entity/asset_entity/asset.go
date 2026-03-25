@@ -1,11 +1,11 @@
 package asset_entity
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 
 	"github.com/opskat/opskat/internal/model/entity/policy"
+	"github.com/opskat/opskat/internal/pkg/jsonfield"
 )
 
 // 资产类型常量
@@ -156,23 +156,16 @@ func (a *Asset) GetSSHConfig() (*SSHConfig, error) {
 	if !a.IsSSH() {
 		return nil, errors.New("资产不是SSH类型")
 	}
-	if a.Config == "" {
-		return nil, errors.New("SSH配置为空")
-	}
-	var cfg SSHConfig
-	if err := json.Unmarshal([]byte(a.Config), &cfg); err != nil {
-		return nil, fmt.Errorf("解析SSH配置失败: %w", err)
-	}
-	return &cfg, nil
+	return jsonfield.Unmarshal[SSHConfig](a.Config, "SSH配置")
 }
 
 // SetSSHConfig 序列化SSH配置到Config字段
 func (a *Asset) SetSSHConfig(cfg *SSHConfig) error {
-	data, err := json.Marshal(cfg)
+	s, err := jsonfield.Marshal(cfg, "SSH配置")
 	if err != nil {
-		return fmt.Errorf("序列化SSH配置失败: %w", err)
+		return err
 	}
-	a.Config = string(data)
+	a.Config = s
 	return nil
 }
 
@@ -181,23 +174,16 @@ func (a *Asset) GetDatabaseConfig() (*DatabaseConfig, error) {
 	if !a.IsDatabase() {
 		return nil, errors.New("资产不是数据库类型")
 	}
-	if a.Config == "" {
-		return nil, errors.New("数据库配置为空")
-	}
-	var cfg DatabaseConfig
-	if err := json.Unmarshal([]byte(a.Config), &cfg); err != nil {
-		return nil, fmt.Errorf("解析数据库配置失败: %w", err)
-	}
-	return &cfg, nil
+	return jsonfield.Unmarshal[DatabaseConfig](a.Config, "数据库配置")
 }
 
 // SetDatabaseConfig 序列化数据库配置到Config字段
 func (a *Asset) SetDatabaseConfig(cfg *DatabaseConfig) error {
-	data, err := json.Marshal(cfg)
+	s, err := jsonfield.Marshal(cfg, "数据库配置")
 	if err != nil {
-		return fmt.Errorf("序列化数据库配置失败: %w", err)
+		return err
 	}
-	a.Config = string(data)
+	a.Config = s
 	return nil
 }
 
@@ -206,75 +192,50 @@ func (a *Asset) GetRedisConfig() (*RedisConfig, error) {
 	if !a.IsRedis() {
 		return nil, errors.New("资产不是Redis类型")
 	}
-	if a.Config == "" {
-		return nil, errors.New("Redis配置为空")
-	}
-	var cfg RedisConfig
-	if err := json.Unmarshal([]byte(a.Config), &cfg); err != nil {
-		return nil, fmt.Errorf("解析Redis配置失败: %w", err)
-	}
-	return &cfg, nil
+	return jsonfield.Unmarshal[RedisConfig](a.Config, "Redis配置")
 }
 
 // SetRedisConfig 序列化Redis配置到Config字段
 func (a *Asset) SetRedisConfig(cfg *RedisConfig) error {
-	data, err := json.Marshal(cfg)
+	s, err := jsonfield.Marshal(cfg, "Redis配置")
 	if err != nil {
-		return fmt.Errorf("序列化Redis配置失败: %w", err)
+		return err
 	}
-	a.Config = string(data)
+	a.Config = s
 	return nil
 }
 
 // GetQueryPolicy 解析SQL权限策略（database类型）
 func (a *Asset) GetQueryPolicy() (*QueryPolicy, error) {
-	if a.CmdPolicy == "" {
-		return &QueryPolicy{}, nil
-	}
-	var p QueryPolicy
-	if err := json.Unmarshal([]byte(a.CmdPolicy), &p); err != nil {
-		return nil, fmt.Errorf("解析SQL权限策略失败: %w", err)
-	}
-	return &p, nil
+	return jsonfield.UnmarshalOrDefault[QueryPolicy](a.CmdPolicy, "SQL权限策略")
 }
 
 // SetQueryPolicy 序列化SQL权限策略
 func (a *Asset) SetQueryPolicy(p *QueryPolicy) error {
-	if p == nil || (len(p.AllowTypes) == 0 && len(p.DenyTypes) == 0 && len(p.DenyFlags) == 0) {
-		a.CmdPolicy = ""
-		return nil
-	}
-	data, err := json.Marshal(p)
+	s, err := jsonfield.MarshalOrClear(p, func(v *QueryPolicy) bool {
+		return v.IsEmpty()
+	}, "SQL权限策略")
 	if err != nil {
-		return fmt.Errorf("序列化SQL权限策略失败: %w", err)
+		return err
 	}
-	a.CmdPolicy = string(data)
+	a.CmdPolicy = s
 	return nil
 }
 
 // GetRedisPolicy 解析Redis权限策略
 func (a *Asset) GetRedisPolicy() (*RedisPolicy, error) {
-	if a.CmdPolicy == "" {
-		return &RedisPolicy{}, nil
-	}
-	var p RedisPolicy
-	if err := json.Unmarshal([]byte(a.CmdPolicy), &p); err != nil {
-		return nil, fmt.Errorf("解析Redis权限策略失败: %w", err)
-	}
-	return &p, nil
+	return jsonfield.UnmarshalOrDefault[RedisPolicy](a.CmdPolicy, "Redis权限策略")
 }
 
 // SetRedisPolicy 序列化Redis权限策略
 func (a *Asset) SetRedisPolicy(p *RedisPolicy) error {
-	if p == nil || (len(p.AllowList) == 0 && len(p.DenyList) == 0) {
-		a.CmdPolicy = ""
-		return nil
-	}
-	data, err := json.Marshal(p)
+	s, err := jsonfield.MarshalOrClear(p, func(v *RedisPolicy) bool {
+		return v.IsEmpty()
+	}, "Redis权限策略")
 	if err != nil {
-		return fmt.Errorf("序列化Redis权限策略失败: %w", err)
+		return err
 	}
-	a.CmdPolicy = string(data)
+	a.CmdPolicy = s
 	return nil
 }
 
@@ -401,26 +362,17 @@ func (a *Asset) SSHAddress() (string, error) {
 
 // GetCommandPolicy 解析命令权限策略
 func (a *Asset) GetCommandPolicy() (*CommandPolicy, error) {
-	if a.CmdPolicy == "" {
-		return &CommandPolicy{}, nil
-	}
-	var p CommandPolicy
-	if err := json.Unmarshal([]byte(a.CmdPolicy), &p); err != nil {
-		return nil, fmt.Errorf("解析命令权限策略失败: %w", err)
-	}
-	return &p, nil
+	return jsonfield.UnmarshalOrDefault[CommandPolicy](a.CmdPolicy, "命令权限策略")
 }
 
 // SetCommandPolicy 序列化命令权限策略
 func (a *Asset) SetCommandPolicy(p *CommandPolicy) error {
-	if p == nil || (len(p.AllowList) == 0 && len(p.DenyList) == 0) {
-		a.CmdPolicy = ""
-		return nil
-	}
-	data, err := json.Marshal(p)
+	s, err := jsonfield.MarshalOrClear(p, func(v *CommandPolicy) bool {
+		return v.IsEmpty()
+	}, "命令权限策略")
 	if err != nil {
-		return fmt.Errorf("序列化命令权限策略失败: %w", err)
+		return err
 	}
-	a.CmdPolicy = string(data)
+	a.CmdPolicy = s
 	return nil
 }

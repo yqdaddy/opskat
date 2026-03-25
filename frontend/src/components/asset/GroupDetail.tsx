@@ -1,9 +1,8 @@
 import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { Folder } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { useAssetStore } from "@/stores/assetStore";
-import { PolicyTagEditor } from "@/components/asset/PolicyTagEditor";
+import { CommandPolicyCard } from "@/components/asset/CommandPolicyCard";
 import { group_entity } from "../../../wailsjs/go/models";
 import { UpdateGroup } from "../../../wailsjs/go/main/App";
 import { toast } from "sonner";
@@ -19,8 +18,7 @@ export function GroupDetail({ group }: GroupDetailProps) {
 
   const [allowList, setAllowList] = useState<string[]>([]);
   const [denyList, setDenyList] = useState<string[]>([]);
-  const [allowInput, setAllowInput] = useState("");
-  const [denyInput, setDenyInput] = useState("");
+  const [policyGroups, setPolicyGroups] = useState<number[]>([]);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -28,42 +26,40 @@ export function GroupDetail({ group }: GroupDetailProps) {
       const policy = JSON.parse(group.CmdPolicy || "{}");
       setAllowList(policy.allow_list || []);
       setDenyList(policy.deny_list || []);
+      setPolicyGroups(policy.groups || []);
     } catch {
       setAllowList([]);
       setDenyList([]);
+      setPolicyGroups([]);
     }
-    setAllowInput("");
-    setDenyInput("");
   }, [group.ID, group.CmdPolicy]);
 
   const GroupIcon = group.Icon ? getIconComponent(group.Icon) : Folder;
   const parentGroup = groups.find((g) => g.ID === group.ParentID);
   const assetCount = assets.filter((a) => a.GroupID === group.ID).length;
 
-  const handleSave = async () => {
-    let cmdPolicy = "";
-    if (allowList.length > 0 || denyList.length > 0) {
-      cmdPolicy = JSON.stringify({
-        allow_list: allowList.length > 0 ? allowList : undefined,
-        deny_list: denyList.length > 0 ? denyList : undefined,
-      });
-    }
-
-    const updated = new group_entity.Group({
-      ...group,
-      CmdPolicy: cmdPolicy,
-    });
-
+  const savePolicy = async (newAllow: string[], newDeny: string[], groups?: number[]) => {
+    const grps = groups ?? policyGroups;
+    const policyObj: Record<string, unknown> = {};
+    if (newAllow.length > 0) policyObj.allow_list = newAllow;
+    if (newDeny.length > 0) policyObj.deny_list = newDeny;
+    if (grps.length > 0) policyObj.groups = grps;
+    const cmdPolicy = Object.keys(policyObj).length > 0 ? JSON.stringify(policyObj) : "";
+    const updated = new group_entity.Group({ ...group, CmdPolicy: cmdPolicy });
     setSaving(true);
     try {
       await UpdateGroup(updated);
       await fetchGroups();
-      toast.success(t("settings.saved"));
     } catch (e) {
       toast.error(String(e));
     } finally {
       setSaving(false);
     }
+  };
+
+  const handleGroupsChange = (newGroups: number[]) => {
+    setPolicyGroups(newGroups);
+    savePolicy(allowList, denyList, newGroups);
   };
 
   return (
@@ -116,44 +112,42 @@ export function GroupDetail({ group }: GroupDetailProps) {
         </div>
 
         {/* Command Policy */}
-        <div className="rounded-xl border bg-card p-4">
-          <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">
-            {t("asset.cmdPolicy")}
-          </h3>
-
-          {/* Allow list */}
-          <PolicyTagEditor
-            label={t("asset.cmdPolicyAllowList")}
-            items={allowList}
-            input={allowInput}
-            onInputChange={setAllowInput}
-            onAdd={(val) => setAllowList([...allowList, val])}
-            onRemove={(i) => setAllowList(allowList.filter((_, idx) => idx !== i))}
-            placeholder={t("asset.cmdPolicyPlaceholder")}
-            color="green"
-          />
-
-          {/* Deny list */}
-          <PolicyTagEditor
-            label={t("asset.cmdPolicyDenyList")}
-            items={denyList}
-            input={denyInput}
-            onInputChange={setDenyInput}
-            onAdd={(val) => setDenyList([...denyList, val])}
-            onRemove={(i) => setDenyList(denyList.filter((_, idx) => idx !== i))}
-            placeholder={t("asset.cmdPolicyPlaceholder")}
-            color="red"
-          />
-
-          <div className="flex items-center justify-between">
-            <p className="text-xs text-muted-foreground">
-              {t("asset.cmdPolicyGroupHint")}
-            </p>
-            <Button size="sm" onClick={handleSave} disabled={saving}>
-              {t("action.save")}
-            </Button>
-          </div>
-        </div>
+        <CommandPolicyCard
+          title={t("asset.cmdPolicy")}
+          policyType="ssh"
+          lists={[
+            {
+              key: "allow_list",
+              label: t("asset.cmdPolicyAllowList"),
+              items: allowList,
+              onAdd: (val) => { const next = [...allowList, val]; setAllowList(next); savePolicy(next, denyList); },
+              onRemove: (i) => { const next = allowList.filter((_, idx) => idx !== i); setAllowList(next); savePolicy(next, denyList); },
+              placeholder: t("asset.cmdPolicyPlaceholder"),
+              variant: "allow",
+            },
+            {
+              key: "deny_list",
+              label: t("asset.cmdPolicyDenyList"),
+              items: denyList,
+              onAdd: (val) => { const next = [...denyList, val]; setDenyList(next); savePolicy(allowList, next); },
+              onRemove: (i) => { const next = denyList.filter((_, idx) => idx !== i); setDenyList(next); savePolicy(allowList, next); },
+              placeholder: t("asset.cmdPolicyPlaceholder"),
+              variant: "deny",
+            },
+          ]}
+          buildPolicyJSON={() => JSON.stringify({ allow_list: allowList, deny_list: denyList, ...(policyGroups.length > 0 ? { groups: policyGroups } : {}) })}
+          hint={t("asset.cmdPolicyGroupHint")}
+          groupID={group.ID}
+          saving={saving}
+          referencedGroups={policyGroups}
+          onGroupsChange={handleGroupsChange}
+          onReset={() => {
+            setAllowList([]);
+            setDenyList([]);
+            setPolicyGroups([]);
+            savePolicy([], [], []);
+          }}
+        />
       </div>
     </div>
   );

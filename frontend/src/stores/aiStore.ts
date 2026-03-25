@@ -14,7 +14,7 @@ import {
 import { ai, conversation_entity, main } from "../../wailsjs/go/models";
 import { EventsOn } from "../../wailsjs/runtime/runtime";
 import i18n from "../i18n";
-import { useTabStore, registerTabCloseHook, type AITabMeta } from "./tabStore";
+import { useTabStore, registerTabCloseHook, registerTabRestoreHook, type AITabMeta, type Tab } from "./tabStore";
 
 // 内容块：文本或工具调用
 export interface ContentBlock {
@@ -632,68 +632,51 @@ registerTabCloseHook((tab) => {
   });
 });
 
-// === Startup: restore AI tab data from backend config ===
+// === Restore Hook: load AI settings and restore conversation tabs ===
 
-LoadAISetting()
-  .then(async (info) => {
-    if (!info || !info.configured) {
-      // Not configured, open a new tab (shows setup prompt)
-      useAIStore.getState().openNewConversationTab();
-      return;
-    }
+async function restoreAITabs(tabs: Tab[]) {
+  const info = await LoadAISetting();
+  if (!info || !info.configured) {
+    return;
+  }
 
-    // Provider already activated by LoadAISetting on backend
-    useAIStore.setState({ configured: true });
+  useAIStore.setState({ configured: true });
 
-    const store = useAIStore.getState();
-    await store.fetchConversations();
+  const store = useAIStore.getState();
+  await store.fetchConversations();
 
+  if (tabs.length > 0) {
+    const { conversations } = store;
     const tabStore = useTabStore.getState();
-    const aiTabs = tabStore.tabs.filter((t) => t.type === "ai");
-
-    if (aiTabs.length > 0) {
-      // Load messages for existing AI tabs
-      const { conversations } = store;
-      for (const tab of aiTabs) {
-        const meta = tab.meta as AITabMeta;
-        if (meta.conversationId) {
-          // Verify conversation still exists
-          if (!conversations.some((c) => c.ID === meta.conversationId)) {
-            tabStore.closeTab(tab.id);
-            continue;
-          }
-          try {
-            const displayMsgs = await SwitchConversation(meta.conversationId);
-            const messages = convertDisplayMessages(displayMsgs);
-            useAIStore.setState((s) => ({
-              tabStates: { ...s.tabStates, [tab.id]: { messages, sending: false } },
-            }));
-            // Update label from conversation title
-            const conv = conversations.find((c) => c.ID === meta.conversationId);
-            if (conv && conv.Title !== tab.label) {
-              tabStore.updateTab(tab.id, { label: conv.Title, meta: { ...meta, title: conv.Title } });
-            }
-          } catch {
-            tabStore.closeTab(tab.id);
-          }
-        } else {
-          // New conversation tab (unsaved) — just initialize empty state
-          useAIStore.setState((s) => ({
-            tabStates: { ...s.tabStates, [tab.id]: { messages: [], sending: false } },
-          }));
+    for (const tab of tabs) {
+      const meta = tab.meta as AITabMeta;
+      if (meta.conversationId) {
+        if (!conversations.some((c) => c.ID === meta.conversationId)) {
+          tabStore.closeTab(tab.id);
+          continue;
         }
-      }
-    } else {
-      // No saved AI tabs, open default
-      const { conversations: convs } = store;
-      if (convs.length > 0) {
-        store.openConversationTab(convs[0].ID).catch(() => {});
+        try {
+          const displayMsgs = await SwitchConversation(meta.conversationId);
+          const messages = convertDisplayMessages(displayMsgs);
+          useAIStore.setState((s) => ({
+            tabStates: { ...s.tabStates, [tab.id]: { messages, sending: false } },
+          }));
+          const conv = conversations.find((c) => c.ID === meta.conversationId);
+          if (conv && conv.Title !== tab.label) {
+            tabStore.updateTab(tab.id, { label: conv.Title, meta: { ...meta, title: conv.Title } });
+          }
+        } catch {
+          tabStore.closeTab(tab.id);
+        }
       } else {
-        store.openNewConversationTab();
+        useAIStore.setState((s) => ({
+          tabStates: { ...s.tabStates, [tab.id]: { messages: [], sending: false } },
+        }));
       }
     }
-  })
-  .catch(() => {
-    // Failed to load settings, show setup wizard
-    useAIStore.getState().openNewConversationTab();
-  });
+  }
+}
+
+registerTabRestoreHook("ai", (tabs) => {
+  restoreAITabs(tabs).catch(() => {});
+});

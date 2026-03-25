@@ -125,6 +125,71 @@ func TestMatchCommandRule(t *testing.T) {
 		Convey("缺少规则要求的 flag", func() {
 			So(MatchCommandRule("kubectl get po -n app", "kubectl get po"), ShouldBeFalse)
 		})
+
+		Convey("rm -rf 危险命令匹配", func() {
+			Convey("rm -rf /* * 匹配 rm -rf /", func() {
+				// /* 作为 -rf 的 flag 值，filepath.Match("/*", "/") 匹配成功
+				So(MatchCommandRule("rm -rf /* *", "rm -rf /"), ShouldBeTrue)
+			})
+
+			Convey("rm -rf / * 匹配 rm -rf /", func() {
+				// / 作为 -rf 的 flag 值，精确匹配
+				So(MatchCommandRule("rm -rf / *", "rm -rf /"), ShouldBeTrue)
+			})
+
+			Convey("rm -rf /* * 匹配 rm -rf /tmp", func() {
+				So(MatchCommandRule("rm -rf /* *", "rm -rf /tmp"), ShouldBeTrue)
+			})
+
+			Convey("rm -rf /* * 不匹配 rm -rf /tmp/sub（跨路径分隔符）", func() {
+				// filepath.Match 的 * 不匹配路径分隔符
+				So(MatchCommandRule("rm -rf /* *", "rm -rf /tmp/sub"), ShouldBeFalse)
+			})
+
+			Convey("rm -rf / * 不匹配 rm -rf /tmp（精确值不匹配）", func() {
+				So(MatchCommandRule("rm -rf / *", "rm -rf /tmp"), ShouldBeFalse)
+			})
+
+			Convey("rm -rf / 精确匹配 rm -rf /", func() {
+				So(MatchCommandRule("rm -rf /", "rm -rf /"), ShouldBeTrue)
+			})
+
+			Convey("rm -rf / 不匹配 rm -rf /tmp", func() {
+				So(MatchCommandRule("rm -rf /", "rm -rf /tmp"), ShouldBeFalse)
+			})
+
+			Convey("rm -rf /* 无尾部通配符也能匹配 rm -rf /", func() {
+				// -rf 的值为 /*，匹配 /；无尾部 * 所以不允许多余参数
+				So(MatchCommandRule("rm -rf /*", "rm -rf /"), ShouldBeTrue)
+				So(MatchCommandRule("rm -rf /*", "rm -rf /tmp"), ShouldBeTrue)
+			})
+
+			Convey("rm -rf /* 不匹配有额外 flag 的命令（无尾部通配符）", func() {
+				So(MatchCommandRule("rm -rf /*", "rm -rf --no-preserve-root /"), ShouldBeFalse)
+			})
+		})
+
+		Convey("组合 flag 自动展开（-rf 等价 -r -f）", func() {
+			Convey("-rf 规则匹配 -r -f 命令", func() {
+				So(MatchCommandRule("rm -rf /* *", "rm -r -f /"), ShouldBeTrue)
+			})
+
+			Convey("-r -f 规则匹配 -rf 命令", func() {
+				So(MatchCommandRule("rm -r -f /* *", "rm -rf /"), ShouldBeTrue)
+			})
+
+			Convey("-r -f 规则匹配 -r -f 命令", func() {
+				So(MatchCommandRule("rm -r -f /* *", "rm -r -f /"), ShouldBeTrue)
+			})
+
+			Convey("-rf 规则匹配 -rf 命令", func() {
+				So(MatchCommandRule("rm -rf /* *", "rm -rf /"), ShouldBeTrue)
+			})
+
+			Convey("长 flag 不展开", func() {
+				So(MatchCommandRule("rm --recursive --force /* *", "rm -r -f /"), ShouldBeFalse)
+			})
+		})
 	})
 }
 

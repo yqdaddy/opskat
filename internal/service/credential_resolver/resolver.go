@@ -107,6 +107,30 @@ func (r *Resolver) ResolveJumpHosts(ctx context.Context, jumpHostID int64, maxDe
 	return []ssh_svc.JumpHostEntry{entry}, nil
 }
 
+// ResolveDatabasePassword 解密 DatabaseConfig 中的密码
+func (r *Resolver) ResolveDatabasePassword(cfg *asset_entity.DatabaseConfig) (string, error) {
+	if cfg.Password == "" {
+		return "", nil
+	}
+	decrypted, err := credential_svc.Default().Decrypt(cfg.Password)
+	if err != nil {
+		return "", fmt.Errorf("解密数据库密码失败: %w", err)
+	}
+	return decrypted, nil
+}
+
+// ResolveRedisPassword 解密 RedisConfig 中的密码
+func (r *Resolver) ResolveRedisPassword(cfg *asset_entity.RedisConfig) (string, error) {
+	if cfg.Password == "" {
+		return "", nil
+	}
+	decrypted, err := credential_svc.Default().Decrypt(cfg.Password)
+	if err != nil {
+		return "", fmt.Errorf("解密 Redis 密码失败: %w", err)
+	}
+	return decrypted, nil
+}
+
 // DecryptProxyPassword 解密代理配置中的密码，返回新的 ProxyConfig（不修改原始对象）
 func (r *Resolver) DecryptProxyPassword(proxy *asset_entity.ProxyConfig) *asset_entity.ProxyConfig {
 	if proxy == nil || proxy.Password == "" {

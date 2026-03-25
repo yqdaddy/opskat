@@ -82,7 +82,7 @@ export function GroupDialog({ open, onOpenChange, editGroup }: GroupDialogProps)
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-sm">
+      <DialogContent className="sm:max-w-sm" onInteractOutside={(e) => e.preventDefault()}>
         <DialogHeader>
           <DialogTitle>
             {editGroup ? t("action.edit") : t("action.add")} {t("asset.group")}

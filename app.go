@@ -26,6 +26,7 @@ import (
 	"github.com/opskat/opskat/internal/model/entity/conversation_entity"
 	"github.com/opskat/opskat/internal/model/entity/group_entity"
 	"github.com/opskat/opskat/internal/model/entity/plan_entity"
+	"github.com/opskat/opskat/internal/model/entity/policy_group_entity"
 	"github.com/opskat/opskat/internal/model/entity/credential_entity"
 	"github.com/opskat/opskat/internal/repository/asset_repo"
 	"github.com/opskat/opskat/internal/repository/audit_repo"
@@ -38,6 +39,7 @@ import (
 	"github.com/opskat/opskat/internal/service/credential_svc"
 	"github.com/opskat/opskat/internal/service/group_svc"
 	"github.com/opskat/opskat/internal/service/import_svc"
+	"github.com/opskat/opskat/internal/service/policy_group_svc"
 	"github.com/opskat/opskat/internal/service/sftp_svc"
 	"github.com/opskat/opskat/internal/service/ssh_svc"
 	"github.com/opskat/opskat/internal/service/update_svc"
@@ -619,6 +621,137 @@ func (a *App) langCtx() context.Context {
 	return i18n.WithLanguage(a.ctx, a.lang)
 }
 
+// --- 策略测试 ---
+
+// PolicyTestRequest 策略测试请求
+type PolicyTestRequest struct {
+	PolicyType string `json:"policyType"` // "ssh" | "database" | "redis"
+	PolicyJSON string `json:"policyJSON"` // JSON 编码的策略结构体（当前编辑状态）
+	Command    string `json:"command"`    // 待测试的命令/SQL/Redis命令
+	AssetID    int64  `json:"assetID"`   // 资产ID（用于解析资产组链）
+	GroupID    int64  `json:"groupID"`   // 资产组ID（用于解析父组链）
+}
+
+// PolicyTestResult 策略测试结果
+type PolicyTestResult struct {
+	Decision       string `json:"decision"`       // "allow" | "deny" | "need_confirm"
+	MatchedPattern string `json:"matchedPattern"` // 匹配到的规则
+	MatchedSource  string `json:"matchedSource"`  // 匹配来源: "" 当前策略, "default" 默认规则, 或组名
+	Message        string `json:"message"`        // 可读说明
+}
+
+// TestPolicyRule 测试命令/SQL/Redis 命令是否匹配当前策略（含资产组继承）
+func (a *App) TestPolicyRule(req PolicyTestRequest) (*PolicyTestResult, error) {
+	command := strings.TrimSpace(req.Command)
+	if command == "" {
+		return nil, fmt.Errorf("command is empty")
+	}
+
+	// 解析当前编辑中的策略 JSON
+	input := ai.PolicyTestInput{
+		PolicyType: req.PolicyType,
+		AssetID:    req.AssetID,
+		GroupID:    req.GroupID,
+	}
+	if req.PolicyJSON != "" {
+		switch req.PolicyType {
+		case "ssh":
+			var p asset_entity.CommandPolicy
+			if err := json.Unmarshal([]byte(req.PolicyJSON), &p); err != nil {
+				return nil, fmt.Errorf("invalid SSH policy JSON: %w", err)
+			}
+			input.CurrentSSH = &p
+		case "database":
+			var p asset_entity.QueryPolicy
+			if err := json.Unmarshal([]byte(req.PolicyJSON), &p); err != nil {
+				return nil, fmt.Errorf("invalid query policy JSON: %w", err)
+			}
+			input.CurrentQuery = &p
+		case "redis":
+			var p asset_entity.RedisPolicy
+			if err := json.Unmarshal([]byte(req.PolicyJSON), &p); err != nil {
+				return nil, fmt.Errorf("invalid Redis policy JSON: %w", err)
+			}
+			input.CurrentRedis = &p
+		default:
+			return nil, fmt.Errorf("unsupported policy type: %s", req.PolicyType)
+		}
+	}
+
+	result := ai.TestPolicy(a.langCtx(), input, command)
+
+	decision := "need_confirm"
+	switch result.Decision {
+	case ai.Allow:
+		decision = "allow"
+	case ai.Deny:
+		decision = "deny"
+	}
+
+	return &PolicyTestResult{
+		Decision:       decision,
+		MatchedPattern: result.MatchedPattern,
+		MatchedSource:  result.MatchedSource,
+		Message:        result.Message,
+	}, nil
+}
+
+// GetDefaultPolicy 获取指定资产类型的默认策略 JSON
+func (a *App) GetDefaultPolicy(assetType string) (string, error) {
+	switch assetType {
+	case asset_entity.AssetTypeSSH:
+		data, err := json.Marshal(asset_entity.DefaultCommandPolicy())
+		if err != nil {
+			return "", err
+		}
+		return string(data), nil
+	case asset_entity.AssetTypeDatabase:
+		data, err := json.Marshal(asset_entity.DefaultQueryPolicy())
+		if err != nil {
+			return "", err
+		}
+		return string(data), nil
+	case asset_entity.AssetTypeRedis:
+		data, err := json.Marshal(asset_entity.DefaultRedisPolicy())
+		if err != nil {
+			return "", err
+		}
+		return string(data), nil
+	default:
+		return "", fmt.Errorf("unsupported asset type: %s", assetType)
+	}
+}
+
+// --- 权限组管理 ---
+
+// ListPolicyGroups 列出权限组（内置 + 自定义）
+func (a *App) ListPolicyGroups(policyType string) ([]*policy_group_entity.PolicyGroupItem, error) {
+	return policy_group_svc.PolicyGroup().List(a.langCtx(), policyType)
+}
+
+// CreatePolicyGroup 创建自定义权限组
+func (a *App) CreatePolicyGroup(pg policy_group_entity.PolicyGroup) (*policy_group_entity.PolicyGroup, error) {
+	if err := policy_group_svc.PolicyGroup().Create(a.langCtx(), &pg); err != nil {
+		return nil, err
+	}
+	return &pg, nil
+}
+
+// UpdatePolicyGroup 更新自定义权限组
+func (a *App) UpdatePolicyGroup(pg policy_group_entity.PolicyGroup) error {
+	return policy_group_svc.PolicyGroup().Update(a.langCtx(), &pg)
+}
+
+// DeletePolicyGroup 删除自定义权限组
+func (a *App) DeletePolicyGroup(id int64) error {
+	return policy_group_svc.PolicyGroup().Delete(a.langCtx(), id)
+}
+
+// CopyPolicyGroup 复制权限组（内置或自定义）
+func (a *App) CopyPolicyGroup(id int64, name string) (*policy_group_entity.PolicyGroup, error) {
+	return policy_group_svc.PolicyGroup().Copy(a.langCtx(), id, name)
+}
+
 // --- 资产操作 ---
 
 // GetAsset 获取资产详情
@@ -987,14 +1120,19 @@ func (a *App) TestDatabaseConnection(configJSON string, plainPassword string) er
 	if err := json.Unmarshal([]byte(configJSON), &cfg); err != nil {
 		return fmt.Errorf("配置解析失败: %w", err)
 	}
-	if plainPassword != "" {
-		cfg.Password = plainPassword
+	password := plainPassword
+	if password == "" {
+		var err error
+		password, err = credential_resolver.Default().ResolveDatabasePassword(&cfg)
+		if err != nil {
+			return fmt.Errorf("连接失败: %w", err)
+		}
 	}
 
 	ctx, cancel := context.WithTimeout(a.langCtx(), 10*time.Second)
 	defer cancel()
 
-	db, tunnel, err := connpool.DialDatabase(ctx, &cfg, a.sshPool)
+	db, tunnel, err := connpool.DialDatabase(ctx, &cfg, password, a.sshPool)
 	if err != nil {
 		return err
 	}
@@ -1012,14 +1150,19 @@ func (a *App) TestRedisConnection(configJSON string, plainPassword string) error
 	if err := json.Unmarshal([]byte(configJSON), &cfg); err != nil {
 		return fmt.Errorf("配置解析失败: %w", err)
 	}
-	if plainPassword != "" {
-		cfg.Password = plainPassword
+	password := plainPassword
+	if password == "" {
+		var err error
+		password, err = credential_resolver.Default().ResolveRedisPassword(&cfg)
+		if err != nil {
+			return fmt.Errorf("连接失败: %w", err)
+		}
 	}
 
 	ctx, cancel := context.WithTimeout(a.langCtx(), 10*time.Second)
 	defer cancel()
 
-	client, tunnel, err := connpool.DialRedis(ctx, &cfg, a.sshPool)
+	client, tunnel, err := connpool.DialRedis(ctx, &cfg, password, a.sshPool)
 	if err != nil {
 		return err
 	}
@@ -1046,11 +1189,15 @@ func (a *App) ExecuteSQL(assetID int64, sqlText string, database string) (string
 	if database != "" {
 		cfg.Database = database
 	}
+	password, err := credential_resolver.Default().ResolveDatabasePassword(cfg)
+	if err != nil {
+		return "", fmt.Errorf("解析凭据失败: %w", err)
+	}
 
 	ctx, cancel := context.WithTimeout(a.langCtx(), 30*time.Second)
 	defer cancel()
 
-	db, tunnel, err := connpool.DialDatabase(ctx, cfg, a.sshPool)
+	db, tunnel, err := connpool.DialDatabase(ctx, cfg, password, a.sshPool)
 	if err != nil {
 		return "", fmt.Errorf("连接数据库失败: %w", err)
 	}
@@ -1076,11 +1223,15 @@ func (a *App) ExecuteRedis(assetID int64, command string, db int) (string, error
 		return "", fmt.Errorf("获取 Redis 配置失败: %w", err)
 	}
 	cfg.Database = db
+	password, err := credential_resolver.Default().ResolveRedisPassword(cfg)
+	if err != nil {
+		return "", fmt.Errorf("解析凭据失败: %w", err)
+	}
 
 	ctx, cancel := context.WithTimeout(a.langCtx(), 30*time.Second)
 	defer cancel()
 
-	client, tunnel, err := connpool.DialRedis(ctx, cfg, a.sshPool)
+	client, tunnel, err := connpool.DialRedis(ctx, cfg, password, a.sshPool)
 	if err != nil {
 		return "", fmt.Errorf("连接 Redis 失败: %w", err)
 	}
@@ -1106,11 +1257,15 @@ func (a *App) ExecuteRedisArgs(assetID int64, args []string, db int) (string, er
 		return "", fmt.Errorf("获取 Redis 配置失败: %w", err)
 	}
 	cfg.Database = db
+	password, err := credential_resolver.Default().ResolveRedisPassword(cfg)
+	if err != nil {
+		return "", fmt.Errorf("解析凭据失败: %w", err)
+	}
 
 	ctx, cancel := context.WithTimeout(a.langCtx(), 30*time.Second)
 	defer cancel()
 
-	client, tunnel, err := connpool.DialRedis(ctx, cfg, a.sshPool)
+	client, tunnel, err := connpool.DialRedis(ctx, cfg, password, a.sshPool)
 	if err != nil {
 		return "", fmt.Errorf("连接 Redis 失败: %w", err)
 	}

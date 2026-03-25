@@ -321,6 +321,9 @@ export function AuditLogPage() {
             <span className="text-xs text-muted-foreground">
               {t("audit.total", { total })}
             </span>
+            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={fetchLogs} disabled={loading}>
+              <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
+            </Button>
           </div>
         )}
         {activeTab === "pool" && (

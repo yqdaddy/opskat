@@ -9,7 +9,6 @@ import (
 	"net/url"
 
 	"github.com/opskat/opskat/internal/model/entity/asset_entity"
-	"github.com/opskat/opskat/internal/service/credential_svc"
 	"github.com/opskat/opskat/internal/sshpool"
 
 	"github.com/cago-frame/cago/pkg/logger"
@@ -19,15 +18,8 @@ import (
 )
 
 // DialDatabase 创建数据库连接（直连或通过 SSH 隧道）
-func DialDatabase(ctx context.Context, cfg *asset_entity.DatabaseConfig, sshPool *sshpool.Pool) (*sql.DB, io.Closer, error) {
-	var password string
-	if cfg.Password != "" {
-		decrypted, err := credential_svc.Default().Decrypt(cfg.Password)
-		if err != nil {
-			return nil, nil, fmt.Errorf("解密数据库密码失败: %w", err)
-		}
-		password = decrypted
-	}
+// password 为已解析的明文密码，由调用方负责解密
+func DialDatabase(ctx context.Context, cfg *asset_entity.DatabaseConfig, password string, sshPool *sshpool.Pool) (*sql.DB, io.Closer, error) {
 
 	var db *sql.DB
 	var tunnel *SSHTunnel

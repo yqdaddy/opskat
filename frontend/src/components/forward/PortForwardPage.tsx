@@ -13,6 +13,7 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { AssetSelect } from "@/components/asset/AssetSelect";
 import {
   ListForwardConfigs, CreateForwardConfig, UpdateForwardConfig,
@@ -105,8 +106,12 @@ export function PortForwardPage() {
     refresh();
   };
 
-  const handleDelete = async (id: number) => {
-    await DeleteForwardConfig(id);
+  const [deleteTarget, setDeleteTarget] = useState<{ id: number; name: string } | null>(null);
+
+  const handleDelete = async () => {
+    if (!deleteTarget) return;
+    await DeleteForwardConfig(deleteTarget.id);
+    setDeleteTarget(null);
     refresh();
   };
 
@@ -206,7 +211,7 @@ export function PortForwardPage() {
                 <Button variant="ghost" size="icon-xs" onClick={() => openEdit(cfg)} title={t("forward.edit")}>
                   <Pencil className="h-3.5 w-3.5" />
                 </Button>
-                <Button variant="ghost" size="icon-xs" onClick={() => handleDelete(cfg.id)} title={t("forward.delete")}>
+                <Button variant="ghost" size="icon-xs" onClick={() => setDeleteTarget({ id: cfg.id, name: cfg.name })} title={t("forward.delete")}>
                   <Trash2 className="h-3.5 w-3.5" />
                 </Button>
               </div>
@@ -326,6 +331,17 @@ export function PortForwardPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Delete confirm */}
+      <ConfirmDialog
+        open={!!deleteTarget}
+        onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}
+        title={t("forward.deleteConfirmTitle")}
+        description={t("forward.deleteConfirmDesc", { name: deleteTarget?.name ?? "" })}
+        cancelText={t("action.cancel")}
+        confirmText={t("action.delete")}
+        onConfirm={handleDelete}
+      />
     </div>
   );
 }

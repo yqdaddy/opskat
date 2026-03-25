@@ -9,6 +9,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { useQueryStore } from "@/stores/queryStore";
 import { useTabStore, type QueryTabMeta } from "@/stores/tabStore";
 import { ExecuteSQL } from "../../../wailsjs/go/main/App";
@@ -51,6 +52,7 @@ export function SqlEditorTab({ tabId, innerTabId }: SqlEditorTabProps) {
   const [affectedRows, setAffectedRows] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showDangerConfirm, setShowDangerConfirm] = useState(false);
 
   // Set default database when databases load
   useEffect(() => {
@@ -68,7 +70,12 @@ export function SqlEditorTab({ tabId, innerTabId }: SqlEditorTabProps) {
     updateInnerTab(tabId, innerTabId, { selectedDb });
   }, [selectedDb, tabId, innerTabId, updateInnerTab]);
 
-  const execute = useCallback(async () => {
+  const isDangerousSQL = useCallback((text: string) => {
+    const upper = text.toUpperCase().replace(/\s+/g, " ").trim();
+    return /^(DELETE|DROP|TRUNCATE|ALTER)\b/.test(upper);
+  }, []);
+
+  const doExecute = useCallback(async () => {
     const trimmed = sql.trim();
     if (!trimmed || !assetId) return;
 
@@ -94,6 +101,16 @@ export function SqlEditorTab({ tabId, innerTabId }: SqlEditorTabProps) {
       setLoading(false);
     }
   }, [sql, assetId, selectedDb]);
+
+  const execute = useCallback(() => {
+    const trimmed = sql.trim();
+    if (!trimmed || !assetId) return;
+    if (isDangerousSQL(trimmed)) {
+      setShowDangerConfirm(true);
+    } else {
+      doExecute();
+    }
+  }, [sql, assetId, isDangerousSQL, doExecute]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
@@ -160,13 +177,30 @@ export function SqlEditorTab({ tabId, innerTabId }: SqlEditorTabProps) {
             {t("query.affectedRows")}: {affectedRows}
           </div>
         )}
+        {columns.length > 0 && !loading && !error && (
+          <div className="px-3 py-1.5 text-xs text-muted-foreground border-b border-border bg-muted/30">
+            {t("query.rows", { count: rows.length })}
+          </div>
+        )}
         <QueryResultTable
           columns={columns}
           rows={rows}
           loading={loading}
           error={error ?? undefined}
+          showRowNumber
         />
       </div>
+
+      {/* Dangerous SQL confirmation */}
+      <ConfirmDialog
+        open={showDangerConfirm}
+        onOpenChange={setShowDangerConfirm}
+        title={t("query.dangerousSqlTitle")}
+        description={t("query.dangerousSqlDesc")}
+        cancelText={t("action.cancel")}
+        confirmText={t("query.execute")}
+        onConfirm={doExecute}
+      />
     </div>
   );
 }

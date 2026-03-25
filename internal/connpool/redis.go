@@ -8,7 +8,6 @@ import (
 	"net"
 
 	"github.com/opskat/opskat/internal/model/entity/asset_entity"
-	"github.com/opskat/opskat/internal/service/credential_svc"
 	"github.com/opskat/opskat/internal/sshpool"
 
 	"github.com/cago-frame/cago/pkg/logger"
@@ -17,16 +16,8 @@ import (
 )
 
 // DialRedis 创建 Redis 连接（直连或通过 SSH 隧道）
-func DialRedis(ctx context.Context, cfg *asset_entity.RedisConfig, sshPool *sshpool.Pool) (*redis.Client, io.Closer, error) {
-	var password string
-	if cfg.Password != "" {
-		decrypted, err := credential_svc.Default().Decrypt(cfg.Password)
-		if err != nil {
-			return nil, nil, fmt.Errorf("解密 Redis 密码失败: %w", err)
-		}
-		password = decrypted
-	}
-
+// password 为已解析的明文密码，由调用方负责解密
+func DialRedis(ctx context.Context, cfg *asset_entity.RedisConfig, password string, sshPool *sshpool.Pool) (*redis.Client, io.Closer, error) {
 	opts := &redis.Options{
 		Addr:     fmt.Sprintf("%s:%d", cfg.Host, cfg.Port),
 		Username: cfg.Username,

@@ -38,29 +38,44 @@ func cmdCp(ctx context.Context, handlers map[string]ai.ToolHandlerFunc, args []s
 	srcIsRemote := srcAssetID > 0
 	dstIsRemote := dstAssetID > 0
 
+	detail := fmt.Sprintf("opsctl cp %s %s", src, dst)
+	argsJSON := fmt.Sprintf(`{"src":%q,"dst":%q}`, src, dst)
+
 	// Require approval for any remote operation
+	var approvalResult ApprovalResult
 	if srcIsRemote || dstIsRemote {
 		approvalAssetID := srcAssetID
 		if dstIsRemote {
 			approvalAssetID = dstAssetID
 		}
-		if _, err := requireApproval(ctx, approval.ApprovalRequest{
+		approvalResult, err = requireApproval(ctx, approval.ApprovalRequest{
 			Type:      "cp",
 			AssetID:   approvalAssetID,
-			Detail:    fmt.Sprintf("opsctl cp %s %s", src, dst),
+			Detail:    detail,
 			SessionID: session,
-		}); err != nil {
+		})
+		auditCtx := ai.WithSessionID(ctx, approvalResult.SessionID)
+		if err != nil {
+			writeOpsctlAudit(auditCtx, "cp", argsJSON, "", err, approvalResult.ToCheckResult())
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			return 1
 		}
+		ctx = auditCtx
 	}
 
 	// 尝试通过 proxy 执行文件传输
 	if proxy := getSSHProxyClient(); proxy != nil {
-		return cmdCpViaProxy(proxy, srcAssetID, srcPath, dstAssetID, dstPath, srcIsRemote, dstIsRemote, src, dst)
+		exitCode := cmdCpViaProxy(proxy, srcAssetID, srcPath, dstAssetID, dstPath, srcIsRemote, dstIsRemote, src, dst)
+		var cpErr error
+		if exitCode != 0 {
+			cpErr = fmt.Errorf("cp via proxy failed with exit code %d", exitCode)
+		}
+		writeOpsctlAudit(ctx, "cp", argsJSON, fmt.Sprintf(`{"status":"completed","exit_code":%d}`, exitCode), cpErr, approvalResult.ToCheckResult())
+		return exitCode
 	}
 
 	// Fallback: 直连
+	var cpErr error
 	switch {
 	case !srcIsRemote && !dstIsRemote:
 		fmt.Fprintln(os.Stderr, "Error: at least one path must be remote (<asset>:<path>)")
@@ -68,24 +83,32 @@ func cmdCp(ctx context.Context, handlers map[string]ai.ToolHandlerFunc, args []s
 
 	case !srcIsRemote && dstIsRemote:
 		// Upload: local -> remote
-		return callHandler(ctx, handlers, "upload_file", map[string]any{
+		exitCode := callHandler(ctx, handlers, "upload_file", map[string]any{
 			"asset_id":    float64(dstAssetID),
 			"local_path":  src,
 			"remote_path": dstPath,
 		})
+		return exitCode
 
 	case srcIsRemote && !dstIsRemote:
 		// Download: remote -> local
-		return callHandler(ctx, handlers, "download_file", map[string]any{
+		exitCode := callHandler(ctx, handlers, "download_file", map[string]any{
 			"asset_id":    float64(srcAssetID),
 			"remote_path": srcPath,
 			"local_path":  dst,
 		})
+		return exitCode
 
 	default:
 		// Asset-to-asset transfer: remote -> remote
-		if err := ai.CopyBetweenAssets(ctx, srcAssetID, srcPath, dstAssetID, dstPath); err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		cpErr = ai.CopyBetweenAssets(ctx, srcAssetID, srcPath, dstAssetID, dstPath)
+		auditResult := `{"status":"completed"}`
+		if cpErr != nil {
+			auditResult = fmt.Sprintf(`{"error":%q}`, cpErr.Error())
+		}
+		writeOpsctlAudit(ctx, "cp", argsJSON, auditResult, cpErr, approvalResult.ToCheckResult())
+		if cpErr != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", cpErr)
 			return 1
 		}
 		return 0

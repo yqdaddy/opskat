@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from "react";
-import { Send, Loader2 } from "lucide-react";
+import { useIMEComposing } from "@/hooks/useIMEComposing";
+import { Loader2, CornerDownLeft } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import Markdown from "react-markdown";
 import rehypeSanitize from "rehype-sanitize";
@@ -25,7 +26,7 @@ export function AIChatContent({ tabId }: AIChatContentProps) {
   const [input, setInput] = useState("");
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const composingRef = useRef(false);
+  const { isComposing, onCompositionStart, onCompositionEnd } = useIMEComposing();
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -44,15 +45,12 @@ export function AIChatContent({ tabId }: AIChatContentProps) {
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (composingRef.current || e.nativeEvent.isComposing) return;
-    if (e.key === "Enter") {
-      if (e.ctrlKey || e.metaKey || e.shiftKey) {
-        // Ctrl+Enter / Cmd+Enter / Shift+Enter: newline
-        return;
-      }
+    if (isComposing()) return;
+    if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
       e.preventDefault();
       handleSend();
     }
+    // Plain Enter / Shift+Enter: newline (default behavior)
   };
 
   // 未配置：显示引导设置
@@ -90,37 +88,41 @@ export function AIChatContent({ tabId }: AIChatContentProps) {
 
       {/* 输入区 */}
       <div className="border-t p-3">
-        <div className="max-w-3xl mx-auto flex gap-2">
-          <textarea
-            ref={textareaRef}
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-            onCompositionStart={() => (composingRef.current = true)}
-            onCompositionEnd={() => {
-              // Delay clearing the flag so the Enter keyDown that ends
-              // the IME composition doesn't trigger send
-              requestAnimationFrame(() => {
-                composingRef.current = false;
-              });
-            }}
-            placeholder={t("ai.sendPlaceholder")}
-            rows={1}
-            className="flex-1 max-h-32 rounded-xl border border-input bg-background px-3 py-2 text-sm outline-none focus:border-ring focus:ring-1 focus:ring-ring/50 resize-none transition-colors duration-150 placeholder:text-muted-foreground/60"
-            style={{ fieldSizing: "content" } as React.CSSProperties}
-          />
-          <Button
-            size="icon"
-            className="h-9 w-9 shrink-0 rounded-xl"
-            onClick={handleSend}
-            disabled={sending || !input.trim()}
-          >
-            {sending ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <Send className="h-4 w-4" />
-            )}
-          </Button>
+        <div className="max-w-3xl mx-auto">
+          <div className="rounded-xl border border-input bg-background transition-colors duration-150 focus-within:border-ring focus-within:ring-1 focus-within:ring-ring/50">
+            <textarea
+              ref={textareaRef}
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={handleKeyDown}
+              onCompositionStart={onCompositionStart}
+              onCompositionEnd={onCompositionEnd}
+              placeholder={t("ai.sendPlaceholder")}
+              rows={2}
+              className="w-full max-h-[25vh] rounded-t-xl bg-transparent px-3 pt-3 pb-1 text-sm outline-none resize-none placeholder:text-muted-foreground/60"
+              style={{ fieldSizing: "content" } as React.CSSProperties}
+            />
+            <div className="flex items-center justify-between px-3 pb-2">
+              <span className="text-xs text-muted-foreground/50 select-none">
+                {/mac/i.test(navigator.userAgent)
+                  ? "⌘+Enter"
+                  : "Ctrl+Enter"}{" "}
+                {t("ai.sendShortcutHint")}
+              </span>
+              <Button
+                size="icon"
+                className="h-7 w-7 shrink-0 rounded-lg"
+                onClick={handleSend}
+                disabled={sending || !input.trim()}
+              >
+                {sending ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <CornerDownLeft className="h-3.5 w-3.5" />
+                )}
+              </Button>
+            </div>
+          </div>
         </div>
       </div>
     </div>

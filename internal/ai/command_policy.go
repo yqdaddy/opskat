@@ -13,6 +13,7 @@ import (
 	"github.com/opskat/opskat/internal/model/entity/asset_entity"
 	"github.com/opskat/opskat/internal/model/entity/group_entity"
 	"github.com/opskat/opskat/internal/model/entity/plan_entity"
+	"github.com/opskat/opskat/internal/model/entity/policy"
 	"github.com/opskat/opskat/internal/repository/group_repo"
 	"github.com/opskat/opskat/internal/repository/plan_repo"
 	"github.com/opskat/opskat/internal/service/asset_svc"
@@ -275,8 +276,8 @@ func (c *CommandPolicyChecker) Check(ctx context.Context, assetID int64, command
 		groups = resolveGroupChain(ctx, asset.GroupID)
 	}
 
-	// 收集所有层级的策略
-	allPolicies := collectPolicies(asset, groups)
+	// 收集所有层级的策略（含权限组解析）
+	allPolicies := collectPolicies(ctx, asset, groups)
 	allDenyRules := collectDenyRules(allPolicies)
 	allAllowRules := collectAllowRules(allPolicies)
 
@@ -363,7 +364,7 @@ func CheckPolicyOnly(ctx context.Context, assetID int64, command string) CheckRe
 		groups = resolveGroupChain(ctx, asset.GroupID)
 	}
 
-	allPolicies := collectPolicies(asset, groups)
+	allPolicies := collectPolicies(ctx, asset, groups)
 	allDenyRules := collectDenyRules(allPolicies)
 	allAllowRules := collectAllowRules(allPolicies)
 
@@ -387,7 +388,72 @@ func CheckPolicyOnly(ctx context.Context, assetID int64, command string) CheckRe
 		return CheckResult{Decision: Allow, DecisionSource: SourcePolicyAllow}
 	}
 
-	return CheckResult{Decision: NeedConfirm}
+	return CheckResult{Decision: NeedConfirm, HintRules: allAllowRules}
+}
+
+// CheckSQLPolicyForOpsctl 检查 SQL 策略（无确认回调），用于 opsctl 前置策略检查。
+// NeedConfirm 时 HintRules 包含允许的 SQL 类型。
+func CheckSQLPolicyForOpsctl(ctx context.Context, assetID int64, sqlText string) CheckResult {
+	// 1. 组通用策略（CmdPolicy）
+	groupResult := CheckGroupGenericPolicy(ctx, assetID, sqlText, MatchCommandRule)
+	if groupResult.Decision == Deny {
+		return groupResult
+	}
+
+	// 2. SQL 分类 + 查询策略
+	stmts, err := ClassifyStatements(sqlText)
+	if err != nil {
+		return CheckResult{Decision: Deny, Message: fmt.Sprintf("SQL 解析失败，拒绝执行: %v", err)}
+	}
+
+	asset, _ := resolveAssetPolicyChain(ctx, assetID)
+	mergedPolicy := collectQueryPolicies(ctx, asset)
+	result := CheckQueryPolicy(mergedPolicy, stmts)
+
+	// 组通用 allow 优先于类型专用的 NeedConfirm
+	if result.Decision == NeedConfirm && groupResult.Decision == Allow {
+		return groupResult
+	}
+
+	// NeedConfirm 时收集允许的 SQL 类型作为提示
+	if result.Decision == NeedConfirm {
+		merged := mergeQueryPolicy(mergedPolicy, asset_entity.DefaultQueryPolicy())
+		if len(merged.AllowTypes) > 0 {
+			result.HintRules = merged.AllowTypes
+		}
+	}
+
+	return result
+}
+
+// CheckRedisPolicyForOpsctl 检查 Redis 策略（无确认回调），用于 opsctl 前置策略检查。
+// NeedConfirm 时 HintRules 包含允许的 Redis 命令。
+func CheckRedisPolicyForOpsctl(ctx context.Context, assetID int64, command string) CheckResult {
+	// 1. 组通用策略（CmdPolicy）
+	groupResult := CheckGroupGenericPolicy(ctx, assetID, command, MatchRedisRule)
+	if groupResult.Decision == Deny {
+		return groupResult
+	}
+
+	// 2. Redis 策略
+	asset, _ := resolveAssetPolicyChain(ctx, assetID)
+	mergedPolicy := collectRedisPolicies(ctx, asset)
+	result := CheckRedisPolicy(mergedPolicy, command)
+
+	// 组通用 allow 优先于类型专用的 NeedConfirm
+	if result.Decision == NeedConfirm && groupResult.Decision == Allow {
+		return groupResult
+	}
+
+	// NeedConfirm 时收集允许的 Redis 命令作为提示
+	if result.Decision == NeedConfirm {
+		merged := mergeRedisPolicy(mergedPolicy, asset_entity.DefaultRedisPolicy())
+		if len(merged.AllowList) > 0 {
+			result.HintRules = merged.AllowList
+		}
+	}
+
+	return result
 }
 
 // CheckForAsset 按资产类型分发权限检查
@@ -397,28 +463,40 @@ func (c *CommandPolicyChecker) CheckForAsset(ctx context.Context, assetID int64,
 		return c.Check(ctx, assetID, command)
 
 	case asset_entity.AssetTypeDatabase:
+		// 先检查组通用策略（CmdPolicy，用 MatchCommandRule）
+		groupResult := CheckGroupGenericPolicy(ctx, assetID, command, MatchCommandRule)
+		if groupResult.Decision == Deny {
+			return groupResult
+		}
 		stmts, err := ClassifyStatements(command)
 		if err != nil {
 			return CheckResult{Decision: Deny, Message: fmt.Sprintf("SQL 解析失败，拒绝执行: %v", err)}
 		}
-		asset, err := asset_svc.Asset().Get(ctx, assetID)
-		if err != nil {
-			logger.Default().Warn("get asset for query policy check", zap.Int64("assetID", assetID), zap.Error(err))
-		}
+		asset, _ := resolveAssetPolicyChain(ctx, assetID)
 		mergedPolicy := collectQueryPolicies(ctx, asset)
 		result := CheckQueryPolicy(mergedPolicy, stmts)
+		// 组通用 allow 优先于类型专用的 NeedConfirm
+		if result.Decision == NeedConfirm && groupResult.Decision == Allow {
+			return groupResult
+		}
 		if result.Decision == NeedConfirm {
 			return c.handleConfirm(ctx, assetID, asset, command)
 		}
 		return result
 
 	case asset_entity.AssetTypeRedis:
-		asset, err := asset_svc.Asset().Get(ctx, assetID)
-		if err != nil {
-			logger.Default().Warn("get asset for redis policy check", zap.Int64("assetID", assetID), zap.Error(err))
+		// 先检查组通用策略（CmdPolicy，用 MatchRedisRule）
+		groupResult := CheckGroupGenericPolicy(ctx, assetID, command, MatchRedisRule)
+		if groupResult.Decision == Deny {
+			return groupResult
 		}
+		asset, _ := resolveAssetPolicyChain(ctx, assetID)
 		mergedPolicy := collectRedisPolicies(ctx, asset)
 		result := CheckRedisPolicy(mergedPolicy, command)
+		// 组通用 allow 优先于类型专用的 NeedConfirm
+		if result.Decision == NeedConfirm && groupResult.Decision == Allow {
+			return groupResult
+		}
 		if result.Decision == NeedConfirm {
 			return c.handleConfirm(ctx, assetID, asset, command)
 		}
@@ -669,7 +747,28 @@ func MatchCommandRule(rule, command string) bool {
 // --- 辅助函数 ---
 
 func tokenize(s string) []string {
-	return strings.Fields(s)
+	var result []string
+	for _, f := range strings.Fields(s) {
+		result = append(result, expandShortFlag(f)...)
+	}
+	return result
+}
+
+// expandShortFlag 展开组合短 flag（如 -rf → -r, -f）
+// 不展开：单字符 flag（-n）、长 flag（--verbose）、含 = 的 flag（-n=val）、非 flag
+func expandShortFlag(token string) []string {
+	if !strings.HasPrefix(token, "-") || strings.HasPrefix(token, "--") {
+		return []string{token}
+	}
+	chars := token[1:]
+	if len(chars) <= 1 || strings.Contains(token, "=") {
+		return []string{token}
+	}
+	result := make([]string, len(chars))
+	for i, c := range chars {
+		result[i] = "-" + string(c)
+	}
+	return result
 }
 
 func isFlag(s string) bool {
@@ -747,16 +846,51 @@ func formatDenyMessage(assetName, command, reason string, hints []string) string
 
 // --- 策略收集 ---
 
-func collectPolicies(asset *asset_entity.Asset, groups []*group_entity.Group) []*asset_entity.CommandPolicy {
-	var policies []*asset_entity.CommandPolicy
-	if asset != nil {
-		if p, err := asset.GetCommandPolicy(); err == nil && p != nil {
+// resolveAssetPolicyChain 解析资产及其组链，返回按优先级排序的策略持有者列表（资产优先）
+func resolveAssetPolicyChain(ctx context.Context, assetID int64) (*asset_entity.Asset, []policy.Holder) {
+	asset, err := asset_svc.Asset().Get(ctx, assetID)
+	if err != nil {
+		logger.Default().Warn("get asset for policy check", zap.Int64("assetID", assetID), zap.Error(err))
+		return nil, nil
+	}
+	var holders []policy.Holder
+	holders = append(holders, asset)
+	if asset.GroupID > 0 {
+		for _, g := range resolveGroupChain(ctx, asset.GroupID) {
+			holders = append(holders, g)
+		}
+	}
+	return asset, holders
+}
+
+// collectPoliciesFromChain 从策略链中收集指定类型的策略
+func collectPoliciesFromChain[T any](holders []policy.Holder, getter func(policy.Holder) (*T, error)) []*T {
+	var policies []*T
+	for _, h := range holders {
+		if p, err := getter(h); err == nil && p != nil {
 			policies = append(policies, p)
 		}
 	}
+	return policies
+}
+
+func collectPolicies(ctx context.Context, asset *asset_entity.Asset, groups []*group_entity.Group) []*asset_entity.CommandPolicy {
+	var holders []policy.Holder
+	if asset != nil {
+		holders = append(holders, asset)
+	}
 	for _, g := range groups {
-		if p, err := g.GetCommandPolicy(); err == nil && p != nil {
-			policies = append(policies, p)
+		holders = append(holders, g)
+	}
+	policies := collectPoliciesFromChain(holders, func(h policy.Holder) (*asset_entity.CommandPolicy, error) {
+		return h.GetCommandPolicy()
+	})
+	// 解析每个策略引用的权限组，将组的规则合并进来
+	for _, p := range policies {
+		if len(p.Groups) > 0 {
+			grpAllow, grpDeny := resolveCommandGroups(ctx, p.Groups)
+			p.AllowList = append(p.AllowList, grpAllow...)
+			p.DenyList = append(p.DenyList, grpDeny...)
 		}
 	}
 	return policies
@@ -764,21 +898,29 @@ func collectPolicies(asset *asset_entity.Asset, groups []*group_entity.Group) []
 
 // collectQueryPolicies 收集资产 + 组链的 SQL 权限策略并合并
 func collectQueryPolicies(ctx context.Context, asset *asset_entity.Asset) *asset_entity.QueryPolicy {
-	var policies []*asset_entity.QueryPolicy
+	var holders []policy.Holder
 	if asset != nil {
-		if p, err := asset.GetQueryPolicy(); err == nil && p != nil {
-			policies = append(policies, p)
-		}
+		holders = append(holders, asset)
 		if asset.GroupID > 0 {
 			for _, g := range resolveGroupChain(ctx, asset.GroupID) {
-				if p, err := g.GetQueryPolicy(); err == nil && p != nil {
-					policies = append(policies, p)
-				}
+				holders = append(holders, g)
 			}
 		}
 	}
+	policies := collectPoliciesFromChain(holders, func(h policy.Holder) (*asset_entity.QueryPolicy, error) {
+		return h.GetQueryPolicy()
+	})
 	if len(policies) == 0 {
 		return nil
+	}
+	// 解析引用的权限组
+	for _, p := range policies {
+		if len(p.Groups) > 0 {
+			grpAllowTypes, grpDenyTypes, grpDenyFlags := resolveQueryGroups(ctx, p.Groups)
+			p.AllowTypes = append(p.AllowTypes, grpAllowTypes...)
+			p.DenyTypes = append(p.DenyTypes, grpDenyTypes...)
+			p.DenyFlags = append(p.DenyFlags, grpDenyFlags...)
+		}
 	}
 	// 合并：allow_types 取第一个非空（资产优先），deny_types/deny_flags 全部合并
 	merged := &asset_entity.QueryPolicy{}
@@ -794,21 +936,28 @@ func collectQueryPolicies(ctx context.Context, asset *asset_entity.Asset) *asset
 
 // collectRedisPolicies 收集资产 + 组链的 Redis 权限策略并合并
 func collectRedisPolicies(ctx context.Context, asset *asset_entity.Asset) *asset_entity.RedisPolicy {
-	var policies []*asset_entity.RedisPolicy
+	var holders []policy.Holder
 	if asset != nil {
-		if p, err := asset.GetRedisPolicy(); err == nil && p != nil {
-			policies = append(policies, p)
-		}
+		holders = append(holders, asset)
 		if asset.GroupID > 0 {
 			for _, g := range resolveGroupChain(ctx, asset.GroupID) {
-				if p, err := g.GetRedisPolicy(); err == nil && p != nil {
-					policies = append(policies, p)
-				}
+				holders = append(holders, g)
 			}
 		}
 	}
+	policies := collectPoliciesFromChain(holders, func(h policy.Holder) (*asset_entity.RedisPolicy, error) {
+		return h.GetRedisPolicy()
+	})
 	if len(policies) == 0 {
 		return nil
+	}
+	// 解析引用的权限组
+	for _, p := range policies {
+		if len(p.Groups) > 0 {
+			grpAllow, grpDeny := resolveRedisGroups(ctx, p.Groups)
+			p.AllowList = append(p.AllowList, grpAllow...)
+			p.DenyList = append(p.DenyList, grpDeny...)
+		}
 	}
 	// 合并：allow_list 取第一个非空（资产优先），deny_list 全部合并
 	merged := &asset_entity.RedisPolicy{}

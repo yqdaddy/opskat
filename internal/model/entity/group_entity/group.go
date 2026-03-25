@@ -1,11 +1,10 @@
 package group_entity
 
 import (
-	"encoding/json"
 	"errors"
-	"fmt"
 
 	"github.com/opskat/opskat/internal/model/entity/policy"
+	"github.com/opskat/opskat/internal/pkg/jsonfield"
 )
 
 // Group 资产分组实体
@@ -43,78 +42,51 @@ func (g *Group) IsRoot() bool {
 
 // GetCommandPolicy 解析命令权限策略
 func (g *Group) GetCommandPolicy() (*policy.CommandPolicy, error) {
-	if g.CmdPolicy == "" {
-		return &policy.CommandPolicy{}, nil
-	}
-	var p policy.CommandPolicy
-	if err := json.Unmarshal([]byte(g.CmdPolicy), &p); err != nil {
-		return nil, fmt.Errorf("解析命令权限策略失败: %w", err)
-	}
-	return &p, nil
+	return jsonfield.UnmarshalOrDefault[policy.CommandPolicy](g.CmdPolicy, "命令权限策略")
 }
 
 // SetCommandPolicy 序列化命令权限策略
 func (g *Group) SetCommandPolicy(p *policy.CommandPolicy) error {
-	if p == nil || (len(p.AllowList) == 0 && len(p.DenyList) == 0) {
-		g.CmdPolicy = ""
-		return nil
-	}
-	data, err := json.Marshal(p)
+	s, err := jsonfield.MarshalOrClear(p, func(v *policy.CommandPolicy) bool {
+		return v.IsEmpty()
+	}, "命令权限策略")
 	if err != nil {
-		return fmt.Errorf("序列化命令权限策略失败: %w", err)
+		return err
 	}
-	g.CmdPolicy = string(data)
+	g.CmdPolicy = s
 	return nil
 }
 
 // GetQueryPolicy 解析 SQL 权限策略
 func (g *Group) GetQueryPolicy() (*policy.QueryPolicy, error) {
-	if g.QryPolicy == "" {
-		return &policy.QueryPolicy{}, nil
-	}
-	var p policy.QueryPolicy
-	if err := json.Unmarshal([]byte(g.QryPolicy), &p); err != nil {
-		return nil, fmt.Errorf("解析SQL权限策略失败: %w", err)
-	}
-	return &p, nil
+	return jsonfield.UnmarshalOrDefault[policy.QueryPolicy](g.QryPolicy, "SQL权限策略")
 }
 
 // SetQueryPolicy 序列化 SQL 权限策略
 func (g *Group) SetQueryPolicy(p *policy.QueryPolicy) error {
-	if p == nil || (len(p.AllowTypes) == 0 && len(p.DenyTypes) == 0 && len(p.DenyFlags) == 0) {
-		g.QryPolicy = ""
-		return nil
-	}
-	data, err := json.Marshal(p)
+	s, err := jsonfield.MarshalOrClear(p, func(v *policy.QueryPolicy) bool {
+		return v.IsEmpty()
+	}, "SQL权限策略")
 	if err != nil {
-		return fmt.Errorf("序列化SQL权限策略失败: %w", err)
+		return err
 	}
-	g.QryPolicy = string(data)
+	g.QryPolicy = s
 	return nil
 }
 
 // GetRedisPolicy 解析 Redis 权限策略
 func (g *Group) GetRedisPolicy() (*policy.RedisPolicy, error) {
-	if g.RdsPolicy == "" {
-		return &policy.RedisPolicy{}, nil
-	}
-	var p policy.RedisPolicy
-	if err := json.Unmarshal([]byte(g.RdsPolicy), &p); err != nil {
-		return nil, fmt.Errorf("解析Redis权限策略失败: %w", err)
-	}
-	return &p, nil
+	return jsonfield.UnmarshalOrDefault[policy.RedisPolicy](g.RdsPolicy, "Redis权限策略")
 }
 
 // SetRedisPolicy 序列化 Redis 权限策略
 func (g *Group) SetRedisPolicy(p *policy.RedisPolicy) error {
-	if p == nil || (len(p.AllowList) == 0 && len(p.DenyList) == 0) {
-		g.RdsPolicy = ""
-		return nil
-	}
-	data, err := json.Marshal(p)
+	s, err := jsonfield.MarshalOrClear(p, func(v *policy.RedisPolicy) bool {
+		return v.IsEmpty()
+	}, "Redis权限策略")
 	if err != nil {
-		return fmt.Errorf("序列化Redis权限策略失败: %w", err)
+		return err
 	}
-	g.RdsPolicy = string(data)
+	g.RdsPolicy = s
 	return nil
 }

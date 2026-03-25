@@ -68,6 +68,41 @@ export function registerTabCloseHook(hook: TabCloseHook) {
   closeHooks.push(hook);
 }
 
+// === Restore Hook ===
+
+type TabRestoreHook = (tabs: Tab[]) => void;
+const restoreHooks: Map<TabType, TabRestoreHook[]> = new Map();
+let _restoreComplete = false;
+
+/**
+ * Register a hook that fires after tabs are restored from localStorage.
+ * The hook is always called (even with an empty array if no tabs of that type exist).
+ * If restore already completed, the hook is called immediately.
+ */
+export function registerTabRestoreHook(tabType: TabType, hook: TabRestoreHook) {
+  if (!restoreHooks.has(tabType)) {
+    restoreHooks.set(tabType, []);
+  }
+  restoreHooks.get(tabType)!.push(hook);
+
+  // If restore already happened, call immediately
+  if (_restoreComplete) {
+    const tabs = useTabStore.getState().tabs.filter((t) => t.type === tabType);
+    hook(tabs);
+  }
+}
+
+function _fireRestoreHooks() {
+  _restoreComplete = true;
+  const allTabs = useTabStore.getState().tabs;
+  for (const [type, hooks] of restoreHooks) {
+    const tabs = allTabs.filter((t) => t.type === type);
+    for (const hook of hooks) {
+      hook(tabs);
+    }
+  }
+}
+
 // === Store ===
 
 interface TabStoreState {
@@ -389,10 +424,9 @@ function _migrateOldKeys(): SavedTabStore | null {
     try {
       const data: SavedTabStore = JSON.parse(raw);
       if (data.tabs && Array.isArray(data.tabs)) {
-        // For terminal tabs, ensure they restore as disconnected
-        // (business stores will handle their own data init)
         useTabStore.setState({ tabs: data.tabs, activeTabId: data.activeTabId });
         _persistReady = true;
+        _fireRestoreHooks();
         return;
       }
     } catch { /* ignore */ }
@@ -407,4 +441,5 @@ function _migrateOldKeys(): SavedTabStore | null {
   }
 
   _persistReady = true;
+  _fireRestoreHooks();
 })();

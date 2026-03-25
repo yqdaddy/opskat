@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useFullscreen } from "@/hooks/useFullscreen";
 import {
   ChevronRight,
@@ -44,7 +44,7 @@ import {
 import { getIconComponent, getIconColor } from "@/components/asset/IconPicker";
 import { useAssetStore } from "@/stores/assetStore";
 import { useTerminalStore } from "@/stores/terminalStore";
-import { useTabStore, type TerminalTabMeta } from "@/stores/tabStore";
+import { useActiveAssetIds } from "@/hooks/useActiveAssetIds";
 import { MoveAsset, MoveGroup } from "../../../wailsjs/go/main/App";
 import { asset_entity, group_entity } from "../../../wailsjs/go/models";
 
@@ -81,9 +81,8 @@ export function AssetTree({
   const isFullscreen = useFullscreen();
   const { assets, groups, selectedAssetId, fetchAssets, fetchGroups, deleteAsset, deleteGroup, refresh } =
     useAssetStore();
-  const { tabData, connectingAssetIds } = useTerminalStore();
-  const tabs = useTabStore((s) => s.tabs);
-  const terminalTabs = useMemo(() => tabs.filter((t) => t.type === "terminal"), [tabs]);
+  const connectingAssetIds = useTerminalStore((s) => s.connectingAssetIds);
+  const activeAssetIds = useActiveAssetIds();
   const [filter, setFilter] = useState("");
   const [deleteConfirm, setDeleteConfirm] = useState<{
     id: number;
@@ -97,15 +96,6 @@ export function AssetTree({
   }, [fetchAssets, fetchGroups]);
 
   if (collapsed) return null;
-
-  const connectedAssetIds = new Set(
-    terminalTabs
-      .filter((t) => {
-        const d = tabData[t.id];
-        return d && Object.values(d.panes).some((p) => p.connected);
-      })
-      .map((t) => (t.meta as TerminalTabMeta).assetId)
-  );
 
   const filteredAssets = filter
     ? assets.filter((a) =>
@@ -238,7 +228,7 @@ export function AssetTree({
               childGroups={childGroups}
               countAssetsInGroup={countAssetsInGroup}
               selectedAssetId={selectedAssetId}
-              connectedAssetIds={connectedAssetIds}
+              activeAssetIds={activeAssetIds}
               connectingAssetIds={connectingAssetIds}
               onSelectAsset={onSelectAsset}
               onAddAsset={() => onAddAsset(group.ID)}
@@ -269,7 +259,7 @@ export function AssetTree({
               childGroups={() => []}
               countAssetsInGroup={() => (groupedAssets.get(0) || []).length}
               selectedAssetId={selectedAssetId}
-              connectedAssetIds={connectedAssetIds}
+              activeAssetIds={activeAssetIds}
               connectingAssetIds={connectingAssetIds}
               onSelectAsset={onSelectAsset}
               onAddAsset={() => onAddAsset(0)}
@@ -310,7 +300,7 @@ export function AssetTree({
         open={!!deleteConfirm}
         onOpenChange={(open) => !open && setDeleteConfirm(null)}
       >
-        <AlertDialogContent>
+        <AlertDialogContent onOverlayClick={() => setDeleteConfirm(null)}>
           <AlertDialogHeader>
             <AlertDialogTitle>{t("asset.deleteGroupTitle")}</AlertDialogTitle>
             <AlertDialogDescription>
@@ -356,7 +346,7 @@ function GroupItem({
   childGroups,
   countAssetsInGroup,
   selectedAssetId,
-  connectedAssetIds,
+  activeAssetIds,
   connectingAssetIds,
   onSelectAsset,
   onAddAsset,
@@ -379,7 +369,7 @@ function GroupItem({
   childGroups: (parentId: number) => group_entity.Group[];
   countAssetsInGroup: (groupId: number) => number;
   selectedAssetId: number | null;
-  connectedAssetIds: Set<number>;
+  activeAssetIds: Set<number>;
   connectingAssetIds: Set<number>;
   onSelectAsset: (asset: asset_entity.Asset) => void;
   onAddAsset: () => void;
@@ -486,7 +476,7 @@ function GroupItem({
               childGroups={childGroups}
               countAssetsInGroup={countAssetsInGroup}
               selectedAssetId={selectedAssetId}
-              connectedAssetIds={connectedAssetIds}
+              activeAssetIds={activeAssetIds}
               connectingAssetIds={connectingAssetIds}
               onSelectAsset={onSelectAsset}
               onAddAsset={onAddAsset}
@@ -539,7 +529,7 @@ function GroupItem({
                     ) : (
                       <AssetIcon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" style={asset.Icon ? { color: getIconColor(asset.Icon) } : undefined} />
                     )}
-                    {connectedAssetIds.has(asset.ID) && (
+                    {activeAssetIds.has(asset.ID) && (
                       <span className="h-1.5 w-1.5 rounded-full bg-success shrink-0" />
                     )}
                     <span className="truncate text-sidebar-foreground">

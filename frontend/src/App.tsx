@@ -123,7 +123,7 @@ function App() {
   const [groupDialogOpen, setGroupDialogOpen] = useState(false);
   const [editingGroup, setEditingGroup] = useState<group_entity.Group | null>(null);
 
-  const { selectAsset, selectGroup, deleteAsset, getAsset, getAssetPath } = useAssetStore();
+  const { selectAsset, selectGroup, deleteAsset, getAsset } = useAssetStore();
   const { connect } = useTerminalStore();
 
   const handleAddAsset = (groupId?: number) => {
@@ -197,20 +197,10 @@ function App() {
       return;
     }
     if (asset.Type !== "ssh") return;
-    const assetPath = getAssetPath(asset);
-    let metadata: { host: string; port: number; username: string } | undefined;
     try {
-      const cfg = JSON.parse(asset.Config || "{}");
-      metadata = {
-        host: cfg.host || "",
-        port: cfg.port || 22,
-        username: cfg.username || "",
-      };
-    } catch { /* ignore parse errors */ }
-    try {
-      await connect(asset.ID, assetPath, asset.Icon || "", "", 80, 24, metadata);
+      await connect(asset);
     } catch (e) {
-      toast.error(`${assetPath}: ${String(e)}`);
+      toast.error(`${asset.Name}: ${String(e)}`);
     }
   };
 

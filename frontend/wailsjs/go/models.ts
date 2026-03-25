@@ -807,6 +807,44 @@ export namespace main {
 	        this.command = source["command"];
 	    }
 	}
+	export class PolicyTestRequest {
+	    policyType: string;
+	    policyJSON: string;
+	    command: string;
+	    assetID: number;
+	    groupID: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new PolicyTestRequest(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.policyType = source["policyType"];
+	        this.policyJSON = source["policyJSON"];
+	        this.command = source["command"];
+	        this.assetID = source["assetID"];
+	        this.groupID = source["groupID"];
+	    }
+	}
+	export class PolicyTestResult {
+	    decision: string;
+	    matchedPattern: string;
+	    matchedSource: string;
+	    message: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new PolicyTestResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.decision = source["decision"];
+	        this.matchedPattern = source["matchedPattern"];
+	        this.matchedSource = source["matchedSource"];
+	        this.message = source["message"];
+	    }
+	}
 	
 	export class SSHConnectRequest {
 	    assetId: number;
@@ -842,6 +880,61 @@ export namespace main {
 	        this.name = source["name"];
 	        this.installed = source["installed"];
 	        this.path = source["path"];
+	    }
+	}
+
+}
+
+export namespace policy_group_entity {
+	
+	export class PolicyGroup {
+	    id: number;
+	    name: string;
+	    description: string;
+	    policyType: string;
+	    policy: string;
+	    createtime: number;
+	    updatetime: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new PolicyGroup(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.description = source["description"];
+	        this.policyType = source["policyType"];
+	        this.policy = source["policy"];
+	        this.createtime = source["createtime"];
+	        this.updatetime = source["updatetime"];
+	    }
+	}
+	export class PolicyGroupItem {
+	    id: number;
+	    name: string;
+	    description: string;
+	    policyType: string;
+	    policy: string;
+	    builtin: boolean;
+	    createtime: number;
+	    updatetime: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new PolicyGroupItem(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.description = source["description"];
+	        this.policyType = source["policyType"];
+	        this.policy = source["policy"];
+	        this.builtin = source["builtin"];
+	        this.createtime = source["createtime"];
+	        this.updatetime = source["updatetime"];
 	    }
 	}
 

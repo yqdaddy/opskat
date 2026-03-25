@@ -14,6 +14,7 @@ import (
 	"github.com/opskat/opskat/internal/connpool"
 	"github.com/opskat/opskat/internal/model/entity/asset_entity"
 	"github.com/opskat/opskat/internal/service/asset_svc"
+	"github.com/opskat/opskat/internal/service/credential_resolver"
 	"github.com/opskat/opskat/internal/sshpool"
 )
 
@@ -22,36 +23,11 @@ import (
 type dbCacheKeyType struct{}
 
 // DatabaseClientCache 在同一次 AI Chat 中复用数据库连接
-type DatabaseClientCache struct {
-	clients map[int64]*sql.DB
-	closers map[int64]io.Closer
-}
+type DatabaseClientCache = ConnCache[*sql.DB]
 
 // NewDatabaseClientCache 创建数据库连接缓存
 func NewDatabaseClientCache() *DatabaseClientCache {
-	return &DatabaseClientCache{
-		clients: make(map[int64]*sql.DB),
-		closers: make(map[int64]io.Closer),
-	}
-}
-
-// Close 关闭所有缓存的数据库连接
-func (c *DatabaseClientCache) Close() error {
-	for id, db := range c.clients {
-		if err := db.Close(); err != nil {
-			logger.Default().Warn("close cached database connection", zap.Int64("assetID", id), zap.Error(err))
-		}
-		delete(c.clients, id)
-	}
-	for id, closer := range c.closers {
-		if closer != nil {
-			if err := closer.Close(); err != nil {
-				logger.Default().Warn("close database tunnel", zap.Int64("assetID", id), zap.Error(err))
-			}
-		}
-		delete(c.closers, id)
-	}
-	return nil
+	return NewConnCache[*sql.DB]("database")
 }
 
 // WithDatabaseCache 将数据库缓存注入 context
@@ -143,19 +119,17 @@ func handleExecSQL(ctx context.Context, args map[string]any) (string, error) {
 }
 
 func getOrDialDatabase(ctx context.Context, assetID int64, cfg *asset_entity.DatabaseConfig) (*sql.DB, io.Closer, error) {
-	if cache := getDatabaseCache(ctx); cache != nil {
-		if db, ok := cache.clients[assetID]; ok {
-			return db, nil, nil
-		}
-		db, closer, err := connpool.DialDatabase(ctx, cfg, getSSHPool(ctx))
+	dialFn := func() (*sql.DB, io.Closer, error) {
+		password, err := credential_resolver.Default().ResolveDatabasePassword(cfg)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, fmt.Errorf("解析凭据失败: %w", err)
 		}
-		cache.clients[assetID] = db
-		cache.closers[assetID] = closer
-		return db, nil, nil
+		return connpool.DialDatabase(ctx, cfg, password, getSSHPool(ctx))
 	}
-	return connpool.DialDatabase(ctx, cfg, getSSHPool(ctx))
+	if cache := getDatabaseCache(ctx); cache != nil {
+		return cache.GetOrDial(assetID, dialFn)
+	}
+	return dialFn()
 }
 
 // ExecuteSQL 执行 SQL 并返回 JSON 结果

@@ -7,8 +7,9 @@ import { toast } from "sonner";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { cn } from "@/lib/utils";
 import { useAssetStore } from "@/stores/assetStore";
-import { PolicyTagEditor } from "@/components/asset/PolicyTagEditor";
+import { CommandPolicyCard } from "@/components/asset/CommandPolicyCard";
 import { asset_entity } from "../../../wailsjs/go/models";
+import { GetDefaultPolicy } from "../../../wailsjs/go/main/App";
 
 interface SSHConfig {
   host: string;
@@ -68,26 +69,21 @@ export function AssetDetail({ asset, isConnecting, onEdit, onDelete, onConnect }
   // SSH Command policy
   const [allowList, setAllowList] = useState<string[]>([]);
   const [denyList, setDenyList] = useState<string[]>([]);
-  const [allowInput, setAllowInput] = useState("");
-  const [denyInput, setDenyInput] = useState("");
+  const [policyGroups, setPolicyGroups] = useState<number[]>([]);
 
   // Database Query policy
   const [queryAllowTypes, setQueryAllowTypes] = useState<string[]>([]);
   const [queryDenyTypes, setQueryDenyTypes] = useState<string[]>([]);
   const [queryDenyFlags, setQueryDenyFlags] = useState<string[]>([]);
-  const [queryAllowInput, setQueryAllowInput] = useState("");
-  const [queryDenyInput, setQueryDenyInput] = useState("");
-  const [queryFlagInput, setQueryFlagInput] = useState("");
 
   // Redis policy
   const [redisAllowList, setRedisAllowList] = useState<string[]>([]);
   const [redisDenyList, setRedisDenyList] = useState<string[]>([]);
-  const [redisAllowInput, setRedisAllowInput] = useState("");
-  const [redisDenyInput, setRedisDenyInput] = useState("");
 
   useEffect(() => {
     try {
       const policy = JSON.parse(asset.CmdPolicy || "{}");
+      setPolicyGroups(policy.groups || []);
       if (asset.Type === "database") {
         setQueryAllowTypes(policy.allow_types || []);
         setQueryDenyTypes(policy.deny_types || []);
@@ -100,21 +96,21 @@ export function AssetDetail({ asset, isConnecting, onEdit, onDelete, onConnect }
         setDenyList(policy.deny_list || []);
       }
     } catch {
-      setAllowList([]); setDenyList([]);
+      setAllowList([]); setDenyList([]); setPolicyGroups([]);
       setQueryAllowTypes([]); setQueryDenyTypes([]); setQueryDenyFlags([]);
       setRedisAllowList([]); setRedisDenyList([]);
     }
-    setAllowInput(""); setDenyInput("");
-    setQueryAllowInput(""); setQueryDenyInput(""); setQueryFlagInput("");
-    setRedisAllowInput(""); setRedisDenyInput("");
+    // input states are managed internally by PolicyTagEditor
   }, [asset.ID, asset.CmdPolicy, asset.Type]);
 
-  const savePolicy = async (policyObj: Record<string, unknown>) => {
-    // Remove empty arrays
+  const savePolicy = async (policyObj: Record<string, unknown>, groups?: number[]) => {
+    // Remove empty arrays (except groups which is managed separately)
     const cleaned: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(policyObj)) {
       if (Array.isArray(v) && v.length > 0) cleaned[k] = v;
     }
+    const grps = groups ?? policyGroups;
+    if (grps.length > 0) cleaned.groups = grps;
     const cmdPolicy = Object.keys(cleaned).length > 0 ? JSON.stringify(cleaned) : "";
     const updated = new asset_entity.Asset({ ...asset, CmdPolicy: cmdPolicy });
     setSavingPolicy(true);
@@ -127,16 +123,52 @@ export function AssetDetail({ asset, isConnecting, onEdit, onDelete, onConnect }
     }
   };
 
-  const handleSaveSSHPolicy = async (newAllow: string[], newDeny: string[]) => {
-    await savePolicy({ allow_list: newAllow, deny_list: newDeny });
+  const handleSaveSSHPolicy = async (newAllow: string[], newDeny: string[], groups?: number[]) => {
+    await savePolicy({ allow_list: newAllow, deny_list: newDeny }, groups);
   };
 
-  const handleSaveQueryPolicy = async (newAllowTypes: string[], newDenyTypes: string[], newDenyFlags: string[]) => {
-    await savePolicy({ allow_types: newAllowTypes, deny_types: newDenyTypes, deny_flags: newDenyFlags });
+  const handleSaveQueryPolicy = async (newAllowTypes: string[], newDenyTypes: string[], newDenyFlags: string[], groups?: number[]) => {
+    await savePolicy({ allow_types: newAllowTypes, deny_types: newDenyTypes, deny_flags: newDenyFlags }, groups);
   };
 
-  const handleSaveRedisPolicy = async (newAllow: string[], newDeny: string[]) => {
-    await savePolicy({ allow_list: newAllow, deny_list: newDeny });
+  const handleSaveRedisPolicy = async (newAllow: string[], newDeny: string[], groups?: number[]) => {
+    await savePolicy({ allow_list: newAllow, deny_list: newDeny }, groups);
+  };
+
+  const handleGroupsChange = (newGroups: number[]) => {
+    setPolicyGroups(newGroups);
+    if (asset.Type === "database") {
+      handleSaveQueryPolicy(queryAllowTypes, queryDenyTypes, queryDenyFlags, newGroups);
+    } else if (asset.Type === "redis") {
+      handleSaveRedisPolicy(redisAllowList, redisDenyList, newGroups);
+    } else {
+      handleSaveSSHPolicy(allowList, denyList, newGroups);
+    }
+  };
+
+  const handleResetPolicy = async () => {
+    try {
+      const defaultJSON = await GetDefaultPolicy(asset.Type);
+      const policy = JSON.parse(defaultJSON);
+      const groups = policy.groups || [];
+      setPolicyGroups(groups);
+      if (asset.Type === "database") {
+        setQueryAllowTypes(policy.allow_types || []);
+        setQueryDenyTypes(policy.deny_types || []);
+        setQueryDenyFlags(policy.deny_flags || []);
+        await savePolicy({ allow_types: policy.allow_types, deny_types: policy.deny_types, deny_flags: policy.deny_flags }, groups);
+      } else if (asset.Type === "redis") {
+        setRedisAllowList(policy.allow_list || []);
+        setRedisDenyList(policy.deny_list || []);
+        await savePolicy({ allow_list: policy.allow_list, deny_list: policy.deny_list }, groups);
+      } else {
+        setAllowList(policy.allow_list || []);
+        setDenyList(policy.deny_list || []);
+        await savePolicy({ allow_list: policy.allow_list, deny_list: policy.deny_list }, groups);
+      }
+    } catch (e) {
+      toast.error(String(e));
+    }
   };
 
   // Parse config based on type
@@ -340,108 +372,116 @@ export function AssetDetail({ asset, isConnecting, onEdit, onDelete, onConnect }
 
         {/* SSH Command Policy */}
         {asset.Type === "ssh" && (
-          <div className="rounded-xl border bg-card p-4">
-            <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">
-              {t("asset.cmdPolicy")}
-            </h3>
-            <PolicyTagEditor
-              label={t("asset.cmdPolicyAllowList")}
-              items={allowList}
-              input={allowInput}
-              onInputChange={setAllowInput}
-              onAdd={(val) => { const next = [...allowList, val]; setAllowList(next); handleSaveSSHPolicy(next, denyList); }}
-              onRemove={(i) => { const next = allowList.filter((_, idx) => idx !== i); setAllowList(next); handleSaveSSHPolicy(next, denyList); }}
-              placeholder={t("asset.cmdPolicyPlaceholder")}
-              color="green"
-            />
-            <PolicyTagEditor
-              label={t("asset.cmdPolicyDenyList")}
-              items={denyList}
-              input={denyInput}
-              onInputChange={setDenyInput}
-              onAdd={(val) => { const next = [...denyList, val]; setDenyList(next); handleSaveSSHPolicy(allowList, next); }}
-              onRemove={(i) => { const next = denyList.filter((_, idx) => idx !== i); setDenyList(next); handleSaveSSHPolicy(allowList, next); }}
-              placeholder={t("asset.cmdPolicyPlaceholder")}
-              color="red"
-            />
-            <p className="text-xs text-muted-foreground">
-              {savingPolicy ? t("settings.saved") + "..." : t("asset.cmdPolicyHint")}
-            </p>
-          </div>
+          <CommandPolicyCard
+            title={t("asset.cmdPolicy")}
+            policyType="ssh"
+            lists={[
+              {
+                key: "allow_list",
+                label: t("asset.cmdPolicyAllowList"),
+                items: allowList,
+                onAdd: (val) => { const next = [...allowList, val]; setAllowList(next); handleSaveSSHPolicy(next, denyList); },
+                onRemove: (i) => { const next = allowList.filter((_, idx) => idx !== i); setAllowList(next); handleSaveSSHPolicy(next, denyList); },
+                placeholder: t("asset.cmdPolicyPlaceholder"),
+                variant: "allow",
+              },
+              {
+                key: "deny_list",
+                label: t("asset.cmdPolicyDenyList"),
+                items: denyList,
+                onAdd: (val) => { const next = [...denyList, val]; setDenyList(next); handleSaveSSHPolicy(allowList, next); },
+                onRemove: (i) => { const next = denyList.filter((_, idx) => idx !== i); setDenyList(next); handleSaveSSHPolicy(allowList, next); },
+                placeholder: t("asset.cmdPolicyPlaceholder"),
+                variant: "deny",
+              },
+            ]}
+            buildPolicyJSON={() => JSON.stringify({ allow_list: allowList, deny_list: denyList, ...(policyGroups.length > 0 ? { groups: policyGroups } : {}) })}
+            hint={t("asset.cmdPolicyHint")}
+            saving={savingPolicy}
+            assetID={asset.ID}
+            onReset={handleResetPolicy}
+            referencedGroups={policyGroups}
+            onGroupsChange={handleGroupsChange}
+          />
         )}
 
         {/* Database Query Policy */}
         {asset.Type === "database" && (
-          <div className="rounded-xl border bg-card p-4">
-            <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">
-              {t("asset.queryPolicy")}
-            </h3>
-            <PolicyTagEditor
-              label={t("asset.queryPolicyAllowTypes")}
-              items={queryAllowTypes}
-              input={queryAllowInput}
-              onInputChange={setQueryAllowInput}
-              onAdd={(val) => { const next = [...queryAllowTypes, val]; setQueryAllowTypes(next); handleSaveQueryPolicy(next, queryDenyTypes, queryDenyFlags); }}
-              onRemove={(i) => { const next = queryAllowTypes.filter((_, idx) => idx !== i); setQueryAllowTypes(next); handleSaveQueryPolicy(next, queryDenyTypes, queryDenyFlags); }}
-              placeholder={t("asset.queryPolicyPlaceholder")}
-              color="green"
-            />
-            <PolicyTagEditor
-              label={t("asset.queryPolicyDenyTypes")}
-              items={queryDenyTypes}
-              input={queryDenyInput}
-              onInputChange={setQueryDenyInput}
-              onAdd={(val) => { const next = [...queryDenyTypes, val]; setQueryDenyTypes(next); handleSaveQueryPolicy(queryAllowTypes, next, queryDenyFlags); }}
-              onRemove={(i) => { const next = queryDenyTypes.filter((_, idx) => idx !== i); setQueryDenyTypes(next); handleSaveQueryPolicy(queryAllowTypes, next, queryDenyFlags); }}
-              placeholder={t("asset.queryPolicyPlaceholder")}
-              color="red"
-            />
-            <PolicyTagEditor
-              label={t("asset.queryPolicyDenyFlags")}
-              items={queryDenyFlags}
-              input={queryFlagInput}
-              onInputChange={setQueryFlagInput}
-              onAdd={(val) => { const next = [...queryDenyFlags, val]; setQueryDenyFlags(next); handleSaveQueryPolicy(queryAllowTypes, queryDenyTypes, next); }}
-              onRemove={(i) => { const next = queryDenyFlags.filter((_, idx) => idx !== i); setQueryDenyFlags(next); handleSaveQueryPolicy(queryAllowTypes, queryDenyTypes, next); }}
-              placeholder={t("asset.queryPolicyFlagPlaceholder")}
-              color="orange"
-            />
-            <p className="text-xs text-muted-foreground">
-              {savingPolicy ? t("settings.saved") + "..." : t("asset.queryPolicyHint")}
-            </p>
-          </div>
+          <CommandPolicyCard
+            title={t("asset.queryPolicy")}
+            policyType="database"
+            lists={[
+              {
+                key: "allow_types",
+                label: t("asset.queryPolicyAllowTypes"),
+                items: queryAllowTypes,
+                onAdd: (val) => { const next = [...queryAllowTypes, val]; setQueryAllowTypes(next); handleSaveQueryPolicy(next, queryDenyTypes, queryDenyFlags); },
+                onRemove: (i) => { const next = queryAllowTypes.filter((_, idx) => idx !== i); setQueryAllowTypes(next); handleSaveQueryPolicy(next, queryDenyTypes, queryDenyFlags); },
+                placeholder: t("asset.queryPolicyPlaceholder"),
+                variant: "allow",
+              },
+              {
+                key: "deny_types",
+                label: t("asset.queryPolicyDenyTypes"),
+                items: queryDenyTypes,
+                onAdd: (val) => { const next = [...queryDenyTypes, val]; setQueryDenyTypes(next); handleSaveQueryPolicy(queryAllowTypes, next, queryDenyFlags); },
+                onRemove: (i) => { const next = queryDenyTypes.filter((_, idx) => idx !== i); setQueryDenyTypes(next); handleSaveQueryPolicy(queryAllowTypes, next, queryDenyFlags); },
+                placeholder: t("asset.queryPolicyPlaceholder"),
+                variant: "deny",
+              },
+              {
+                key: "deny_flags",
+                label: t("asset.queryPolicyDenyFlags"),
+                items: queryDenyFlags,
+                onAdd: (val) => { const next = [...queryDenyFlags, val]; setQueryDenyFlags(next); handleSaveQueryPolicy(queryAllowTypes, queryDenyTypes, next); },
+                onRemove: (i) => { const next = queryDenyFlags.filter((_, idx) => idx !== i); setQueryDenyFlags(next); handleSaveQueryPolicy(queryAllowTypes, queryDenyTypes, next); },
+                placeholder: t("asset.queryPolicyFlagPlaceholder"),
+                variant: "warn",
+              },
+            ]}
+            buildPolicyJSON={() => JSON.stringify({ allow_types: queryAllowTypes, deny_types: queryDenyTypes, deny_flags: queryDenyFlags, ...(policyGroups.length > 0 ? { groups: policyGroups } : {}) })}
+            hint={t("asset.queryPolicyHint")}
+            saving={savingPolicy}
+            assetID={asset.ID}
+            onReset={handleResetPolicy}
+            referencedGroups={policyGroups}
+            onGroupsChange={handleGroupsChange}
+          />
         )}
 
         {/* Redis Policy */}
         {asset.Type === "redis" && (
-          <div className="rounded-xl border bg-card p-4">
-            <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">
-              {t("asset.redisPolicy")}
-            </h3>
-            <PolicyTagEditor
-              label={t("asset.redisPolicyAllowList")}
-              items={redisAllowList}
-              input={redisAllowInput}
-              onInputChange={setRedisAllowInput}
-              onAdd={(val) => { const next = [...redisAllowList, val]; setRedisAllowList(next); handleSaveRedisPolicy(next, redisDenyList); }}
-              onRemove={(i) => { const next = redisAllowList.filter((_, idx) => idx !== i); setRedisAllowList(next); handleSaveRedisPolicy(next, redisDenyList); }}
-              placeholder={t("asset.redisPolicyPlaceholder")}
-              color="green"
-            />
-            <PolicyTagEditor
-              label={t("asset.redisPolicyDenyList")}
-              items={redisDenyList}
-              input={redisDenyInput}
-              onInputChange={setRedisDenyInput}
-              onAdd={(val) => { const next = [...redisDenyList, val]; setRedisDenyList(next); handleSaveRedisPolicy(redisAllowList, next); }}
-              onRemove={(i) => { const next = redisDenyList.filter((_, idx) => idx !== i); setRedisDenyList(next); handleSaveRedisPolicy(redisAllowList, next); }}
-              placeholder={t("asset.redisPolicyPlaceholder")}
-              color="red"
-            />
-            <p className="text-xs text-muted-foreground">
-              {savingPolicy ? t("settings.saved") + "..." : t("asset.redisPolicyHint")}
-            </p>
-          </div>
+          <CommandPolicyCard
+            title={t("asset.redisPolicy")}
+            policyType="redis"
+            lists={[
+              {
+                key: "allow_list",
+                label: t("asset.redisPolicyAllowList"),
+                items: redisAllowList,
+                onAdd: (val) => { const next = [...redisAllowList, val]; setRedisAllowList(next); handleSaveRedisPolicy(next, redisDenyList); },
+                onRemove: (i) => { const next = redisAllowList.filter((_, idx) => idx !== i); setRedisAllowList(next); handleSaveRedisPolicy(next, redisDenyList); },
+                placeholder: t("asset.redisPolicyPlaceholder"),
+                variant: "allow",
+              },
+              {
+                key: "deny_list",
+                label: t("asset.redisPolicyDenyList"),
+                items: redisDenyList,
+                onAdd: (val) => { const next = [...redisDenyList, val]; setRedisDenyList(next); handleSaveRedisPolicy(redisAllowList, next); },
+                onRemove: (i) => { const next = redisDenyList.filter((_, idx) => idx !== i); setRedisDenyList(next); handleSaveRedisPolicy(redisAllowList, next); },
+                placeholder: t("asset.redisPolicyPlaceholder"),
+                variant: "deny",
+              },
+            ]}
+            buildPolicyJSON={() => JSON.stringify({ allow_list: redisAllowList, deny_list: redisDenyList, ...(policyGroups.length > 0 ? { groups: policyGroups } : {}) })}
+            hint={t("asset.redisPolicyHint")}
+            saving={savingPolicy}
+            assetID={asset.ID}
+            onReset={handleResetPolicy}
+            referencedGroups={policyGroups}
+            onGroupsChange={handleGroupsChange}
+          />
         )}
 
         {asset.Description && (

@@ -26,6 +26,10 @@ export function ConnectSSHAsync(arg1) {
   return window['go']['main']['App']['ConnectSSHAsync'](arg1);
 }
 
+export function CopyPolicyGroup(arg1, arg2) {
+  return window['go']['main']['App']['CopyPolicyGroup'](arg1, arg2);
+}
+
 export function CreateAsset(arg1) {
   return window['go']['main']['App']['CreateAsset'](arg1);
 }
@@ -46,6 +50,10 @@ export function CreatePasswordCredential(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['CreatePasswordCredential'](arg1, arg2, arg3, arg4);
 }
 
+export function CreatePolicyGroup(arg1) {
+  return window['go']['main']['App']['CreatePolicyGroup'](arg1);
+}
+
 export function DeleteAsset(arg1) {
   return window['go']['main']['App']['DeleteAsset'](arg1);
 }
@@ -64,6 +72,10 @@ export function DeleteForwardConfig(arg1) {
 
 export function DeleteGroup(arg1, arg2) {
   return window['go']['main']['App']['DeleteGroup'](arg1, arg2);
+}
+
+export function DeletePolicyGroup(arg1) {
+  return window['go']['main']['App']['DeletePolicyGroup'](arg1);
 }
 
 export function DetectLocalCLIs() {
@@ -144,6 +156,10 @@ export function GetCurrentConversationID() {
 
 export function GetDataDir() {
   return window['go']['main']['App']['GetDataDir']();
+}
+
+export function GetDefaultPolicy(arg1) {
+  return window['go']['main']['App']['GetDefaultPolicy'](arg1);
 }
 
 export function GetGitHubToken() {
@@ -248,6 +264,10 @@ export function ListGroups() {
 
 export function ListLocalSSHKeys() {
   return window['go']['main']['App']['ListLocalSSHKeys']();
+}
+
+export function ListPolicyGroups(arg1) {
+  return window['go']['main']['App']['ListPolicyGroups'](arg1);
 }
 
 export function LoadAISetting() {
@@ -402,6 +422,10 @@ export function TestDatabaseConnection(arg1, arg2) {
   return window['go']['main']['App']['TestDatabaseConnection'](arg1, arg2);
 }
 
+export function TestPolicyRule(arg1) {
+  return window['go']['main']['App']['TestPolicyRule'](arg1);
+}
+
 export function TestRedisConnection(arg1, arg2) {
   return window['go']['main']['App']['TestRedisConnection'](arg1, arg2);
 }
@@ -432,6 +456,10 @@ export function UpdateForwardConfig(arg1, arg2, arg3, arg4) {
 
 export function UpdateGroup(arg1) {
   return window['go']['main']['App']['UpdateGroup'](arg1);
+}
+
+export function UpdatePolicyGroup(arg1) {
+  return window['go']['main']['App']['UpdatePolicyGroup'](arg1);
 }
 
 export function WaitGitHubDeviceAuth(arg1, arg2) {

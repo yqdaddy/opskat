@@ -13,6 +13,7 @@ import (
 	"github.com/opskat/opskat/internal/connpool"
 	"github.com/opskat/opskat/internal/model/entity/asset_entity"
 	"github.com/opskat/opskat/internal/service/asset_svc"
+	"github.com/opskat/opskat/internal/service/credential_resolver"
 
 	"github.com/redis/go-redis/v9"
 )
@@ -22,36 +23,11 @@ import (
 type redisCacheKeyType struct{}
 
 // RedisClientCache 在同一次 AI Chat 中复用 Redis 连接
-type RedisClientCache struct {
-	clients map[int64]*redis.Client
-	closers map[int64]io.Closer
-}
+type RedisClientCache = ConnCache[*redis.Client]
 
 // NewRedisClientCache 创建 Redis 连接缓存
 func NewRedisClientCache() *RedisClientCache {
-	return &RedisClientCache{
-		clients: make(map[int64]*redis.Client),
-		closers: make(map[int64]io.Closer),
-	}
-}
-
-// Close 关闭所有缓存的 Redis 连接
-func (c *RedisClientCache) Close() error {
-	for id, client := range c.clients {
-		if err := client.Close(); err != nil {
-			logger.Default().Warn("close cached Redis connection", zap.Int64("assetID", id), zap.Error(err))
-		}
-		delete(c.clients, id)
-	}
-	for id, closer := range c.closers {
-		if closer != nil {
-			if err := closer.Close(); err != nil {
-				logger.Default().Warn("close Redis tunnel", zap.Int64("assetID", id), zap.Error(err))
-			}
-		}
-		delete(c.closers, id)
-	}
-	return nil
+	return NewConnCache[*redis.Client]("Redis")
 }
 
 // WithRedisCache 将 Redis 缓存注入 context
@@ -121,19 +97,17 @@ func handleExecRedis(ctx context.Context, args map[string]any) (string, error) {
 }
 
 func getOrDialRedis(ctx context.Context, assetID int64, cfg *asset_entity.RedisConfig) (*redis.Client, io.Closer, error) {
-	if cache := getRedisCache(ctx); cache != nil {
-		if client, ok := cache.clients[assetID]; ok {
-			return client, nil, nil
-		}
-		client, closer, err := connpool.DialRedis(ctx, cfg, getSSHPool(ctx))
+	dialFn := func() (*redis.Client, io.Closer, error) {
+		password, err := credential_resolver.Default().ResolveRedisPassword(cfg)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, fmt.Errorf("解析凭据失败: %w", err)
 		}
-		cache.clients[assetID] = client
-		cache.closers[assetID] = closer
-		return client, nil, nil
+		return connpool.DialRedis(ctx, cfg, password, getSSHPool(ctx))
 	}
-	return connpool.DialRedis(ctx, cfg, getSSHPool(ctx))
+	if cache := getRedisCache(ctx); cache != nil {
+		return cache.GetOrDial(assetID, dialFn)
+	}
+	return dialFn()
 }
 
 // ExecuteRedis 执行 Redis 命令并返回 JSON 结果

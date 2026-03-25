@@ -51,14 +51,18 @@ func cmdSQL(ctx context.Context, handlers map[string]ai.ToolHandlerFunc, args []
 	}
 
 	// Require approval
-	if _, approvalErr := requireApproval(ctx, approval.ApprovalRequest{
+	argsJSON := fmt.Sprintf(`{"asset_id":%d,"sql":%q}`, asset.ID, truncateStr(sqlText, 200))
+	approvalResult, approvalErr := requireApproval(ctx, approval.ApprovalRequest{
 		Type:      "sql",
 		AssetID:   asset.ID,
 		AssetName: asset.Name,
 		Command:   sqlText,
 		Detail:    fmt.Sprintf("opsctl sql %s %q", args[0], truncateStr(sqlText, 100)),
 		SessionID: session,
-	}); approvalErr != nil {
+	})
+	auditCtx := ai.WithSessionID(ctx, approvalResult.SessionID)
+	if approvalErr != nil {
+		writeOpsctlAudit(auditCtx, "exec_sql", argsJSON, "", approvalErr, approvalResult.ToCheckResult())
 		fmt.Fprintf(os.Stderr, "Error: %v\n", approvalErr)
 		return 1
 	}
@@ -70,7 +74,7 @@ func cmdSQL(ctx context.Context, handlers map[string]ai.ToolHandlerFunc, args []
 	if *database != "" {
 		params["database"] = *database
 	}
-	return callHandler(ctx, handlers, "exec_sql", params)
+	return callHandler(auditCtx, handlers, "exec_sql", params)
 }
 
 func cmdRedisCmd(ctx context.Context, handlers map[string]ai.ToolHandlerFunc, args []string, session string) int {
@@ -96,19 +100,23 @@ func cmdRedisCmd(ctx context.Context, handlers map[string]ai.ToolHandlerFunc, ar
 	}
 
 	// Require approval
-	if _, approvalErr := requireApproval(ctx, approval.ApprovalRequest{
+	argsJSON := fmt.Sprintf(`{"asset_id":%d,"command":%q}`, asset.ID, truncateStr(command, 200))
+	approvalResult, approvalErr := requireApproval(ctx, approval.ApprovalRequest{
 		Type:      "redis",
 		AssetID:   asset.ID,
 		AssetName: asset.Name,
 		Command:   command,
 		Detail:    fmt.Sprintf("opsctl redis %s %q", args[0], truncateStr(command, 100)),
 		SessionID: session,
-	}); approvalErr != nil {
+	})
+	auditCtx := ai.WithSessionID(ctx, approvalResult.SessionID)
+	if approvalErr != nil {
+		writeOpsctlAudit(auditCtx, "exec_redis", argsJSON, "", approvalErr, approvalResult.ToCheckResult())
 		fmt.Fprintf(os.Stderr, "Error: %v\n", approvalErr)
 		return 1
 	}
 
-	return callHandler(ctx, handlers, "exec_redis", map[string]any{
+	return callHandler(auditCtx, handlers, "exec_redis", map[string]any{
 		"asset_id": float64(asset.ID),
 		"command":  command,
 	})
@@ -126,11 +134,10 @@ Flags:
   -d <database> Override the default database for this execution
 
 Approval:
-  This command requires approval from the running desktop app.
   SQL statements are checked against the asset's query policy:
   - Allowed types (e.g. SELECT) execute without approval
   - Denied types (e.g. DROP TABLE) are rejected
-  - Other statements require user confirmation
+  - Other statements require user confirmation (desktop app) or are rejected (offline)
 
 Examples:
   opsctl sql prod-db "SELECT * FROM users LIMIT 10"
@@ -149,10 +156,9 @@ Arguments:
   command   Redis command (e.g. "GET mykey", "HGETALL user:1")
 
 Approval:
-  This command requires approval from the running desktop app.
   Commands are checked against the asset's Redis policy:
   - Dangerous commands (FLUSHDB, CONFIG SET, etc.) are rejected by default
-  - Other commands require user confirmation on first use
+  - Other commands require user confirmation (desktop app) or are rejected (offline)
 
 Examples:
   opsctl redis cache "GET session:abc123"

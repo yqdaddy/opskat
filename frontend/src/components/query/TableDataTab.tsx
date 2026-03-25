@@ -1,10 +1,19 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { useTranslation } from "react-i18next";
-import { ChevronLeft, ChevronRight, Save, Undo2, Loader2 } from "lucide-react";
+import { ChevronLeft, ChevronRight, Save, Undo2, Loader2, RefreshCw, ChevronsLeft, ChevronsRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useTabStore, type QueryTabMeta } from "@/stores/tabStore";
 import { ExecuteSQL } from "../../../wailsjs/go/main/App";
 import { QueryResultTable, CellEdit } from "./QueryResultTable";
+import { SqlPreviewDialog } from "./SqlPreviewDialog";
 import { toast } from "sonner";
 
 interface TableDataTabProps {
@@ -13,7 +22,8 @@ interface TableDataTabProps {
   table: string;
 }
 
-const PAGE_SIZE = 100;
+const PAGE_SIZES = [50, 100, 200, 500];
+const DEFAULT_PAGE_SIZE = 100;
 
 interface SQLResult {
   columns?: string[];
@@ -26,7 +36,6 @@ interface SQLResult {
 function sqlQuote(value: unknown): string {
   if (value == null) return "NULL";
   const s = String(value);
-  // Escape single quotes
   const escaped = s.replace(/'/g, "''");
   return `'${escaped}'`;
 }
@@ -43,15 +52,39 @@ export function TableDataTab({ tabId, database, table }: TableDataTabProps) {
 
   const [columns, setColumns] = useState<string[]>([]);
   const [rows, setRows] = useState<Record<string, unknown>[]>([]);
-  const [totalRows, setTotalRows] = useState(0);
+  const [totalRows, setTotalRows] = useState<number | null>(null);
   const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
+  const [pageInput, setPageInput] = useState("1");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [edits, setEdits] = useState<Map<string, unknown>>(new Map());
   const [submitting, setSubmitting] = useState(false);
+  const [showSqlPreview, setShowSqlPreview] = useState(false);
 
   const driver = queryMeta?.driver;
   const assetId = queryMeta?.assetId ?? 0;
+
+  const totalPages = totalRows != null ? Math.max(1, Math.ceil(totalRows / pageSize)) : null;
+
+  // Fetch total count
+  const fetchCount = useCallback(async () => {
+    if (!assetId) return;
+    const tableName = driver === "postgresql"
+      ? `"${table}"`
+      : `${quoteIdent(database, driver)}.${quoteIdent(table, driver)}`;
+    try {
+      const result = await ExecuteSQL(assetId, `SELECT COUNT(*) AS cnt FROM ${tableName}`, database);
+      const parsed: SQLResult = JSON.parse(result);
+      const row = parsed.rows?.[0];
+      if (row) {
+        const cnt = Number(Object.values(row)[0]);
+        if (!isNaN(cnt)) setTotalRows(cnt);
+      }
+    } catch {
+      // ignore count errors
+    }
+  }, [assetId, database, table, driver]);
 
   const fetchData = useCallback(
     async (pageNum: number) => {
@@ -59,21 +92,17 @@ export function TableDataTab({ tabId, database, table }: TableDataTabProps) {
       setLoading(true);
       setError(null);
 
-      const offset = pageNum * PAGE_SIZE;
-      let sql: string;
-
-      if (driver === "postgresql") {
-        sql = `SELECT * FROM "${table}" LIMIT ${PAGE_SIZE} OFFSET ${offset}`;
-      } else {
-        sql = `SELECT * FROM ${quoteIdent(database, driver)}.${quoteIdent(table, driver)} LIMIT ${PAGE_SIZE} OFFSET ${offset}`;
-      }
+      const offset = pageNum * pageSize;
+      const tableName = driver === "postgresql"
+        ? `"${table}"`
+        : `${quoteIdent(database, driver)}.${quoteIdent(table, driver)}`;
+      const sql = `SELECT * FROM ${tableName} LIMIT ${pageSize} OFFSET ${offset}`;
 
       try {
         const result = await ExecuteSQL(assetId, sql, database);
         const parsed: SQLResult = JSON.parse(result);
         setColumns(parsed.columns || []);
         setRows(parsed.rows || []);
-        setTotalRows(parsed.count ?? (parsed.rows || []).length);
       } catch (e) {
         setError(String(e));
         setColumns([]);
@@ -82,17 +111,26 @@ export function TableDataTab({ tabId, database, table }: TableDataTabProps) {
         setLoading(false);
       }
     },
-    [assetId, database, table, driver]
+    [assetId, database, table, driver, pageSize]
   );
+
+  useEffect(() => {
+    fetchCount();
+  }, [fetchCount]);
 
   useEffect(() => {
     fetchData(page);
   }, [fetchData, page]);
 
+  // Sync page input
+  useEffect(() => {
+    setPageInput(String(page + 1));
+  }, [page]);
+
   // Clear edits when page changes
   useEffect(() => {
     setEdits(new Map());
-  }, [page]);
+  }, [page, pageSize]);
 
   const handleCellEdit = useCallback((edit: CellEdit) => {
     setEdits((prev) => {
@@ -107,10 +145,10 @@ export function TableDataTab({ tabId, database, table }: TableDataTabProps) {
     setEdits(new Map());
   }, []);
 
-  const handleSubmit = useCallback(async () => {
-    if (edits.size === 0 || !assetId) return;
+  // Build SQL statements for preview
+  const buildUpdateStatements = useCallback((): string[] => {
+    if (edits.size === 0) return [];
 
-    // Group edits by row
     const rowEdits = new Map<number, Map<string, unknown>>();
     for (const [key, value] of edits) {
       const [rowIdxStr, col] = [key.substring(0, key.indexOf(":")), key.substring(key.indexOf(":") + 1)];
@@ -119,21 +157,16 @@ export function TableDataTab({ tabId, database, table }: TableDataTabProps) {
       rowEdits.get(rowIdx)!.set(col, value);
     }
 
-    setSubmitting(true);
-    let successCount = 0;
-    let errorMsg = "";
-
+    const statements: string[] = [];
     for (const [rowIdx, colEdits] of rowEdits) {
       const row = rows[rowIdx];
       if (!row) continue;
 
-      // Build SET clause
       const setClauses: string[] = [];
       for (const [col, value] of colEdits) {
         setClauses.push(`${quoteIdent(col, driver)} = ${sqlQuote(value)}`);
       }
 
-      // Build WHERE clause using ALL original column values to identify the row
       const whereClauses: string[] = [];
       for (const col of columns) {
         const origVal = row[col];
@@ -148,10 +181,27 @@ export function TableDataTab({ tabId, database, table }: TableDataTabProps) {
         ? `"${table}"`
         : `${quoteIdent(database, driver)}.${quoteIdent(table, driver)}`;
 
-      const updateSQL = `UPDATE ${tableName} SET ${setClauses.join(", ")} WHERE ${whereClauses.join(" AND ")} LIMIT 1`;
+      statements.push(`UPDATE ${tableName} SET ${setClauses.join(", ")} WHERE ${whereClauses.join(" AND ")} LIMIT 1;`);
+    }
+    return statements;
+  }, [edits, rows, columns, driver, database, table]);
 
+  const previewStatements = useMemo(() => {
+    if (!showSqlPreview) return [];
+    return buildUpdateStatements();
+  }, [showSqlPreview, buildUpdateStatements]);
+
+  const handleSubmit = useCallback(async () => {
+    if (edits.size === 0 || !assetId) return;
+
+    const statements = buildUpdateStatements();
+    setSubmitting(true);
+    let successCount = 0;
+    let errorMsg = "";
+
+    for (const sql of statements) {
       try {
-        await ExecuteSQL(assetId, updateSQL, database);
+        await ExecuteSQL(assetId, sql, database);
         successCount++;
       } catch (e) {
         errorMsg += String(e) + "\n";
@@ -159,6 +209,7 @@ export function TableDataTab({ tabId, database, table }: TableDataTabProps) {
     }
 
     setSubmitting(false);
+    setShowSqlPreview(false);
 
     if (errorMsg) {
       toast.error(errorMsg.trim());
@@ -166,12 +217,27 @@ export function TableDataTab({ tabId, database, table }: TableDataTabProps) {
     if (successCount > 0) {
       toast.success(t("query.updateSuccess", { count: successCount }));
       setEdits(new Map());
-      // Refresh data
       fetchData(page);
+      fetchCount();
     }
-  }, [edits, rows, columns, assetId, database, table, driver, page, fetchData, t]);
+  }, [edits, assetId, database, buildUpdateStatements, page, fetchData, fetchCount, t]);
 
-  const hasNext = rows.length === PAGE_SIZE;
+  const handlePageInputConfirm = useCallback(() => {
+    const num = parseInt(pageInput, 10);
+    if (isNaN(num) || num < 1) {
+      setPageInput(String(page + 1));
+      return;
+    }
+    const target = totalPages ? Math.min(num, totalPages) - 1 : num - 1;
+    setPage(target);
+  }, [pageInput, page, totalPages]);
+
+  const handleRefresh = useCallback(() => {
+    fetchData(page);
+    fetchCount();
+  }, [fetchData, fetchCount, page]);
+
+  const hasNext = totalPages != null ? page < totalPages - 1 : rows.length === pageSize;
   const hasPrev = page > 0;
   const hasEdits = edits.size > 0;
 
@@ -182,12 +248,48 @@ export function TableDataTab({ tabId, database, table }: TableDataTabProps) {
         <span className="text-xs font-mono font-semibold bg-muted px-1.5 py-0.5 rounded border border-border">
           {database}.{table}
         </span>
-        {!loading && !error && (
+        {totalRows != null && (
           <span className="text-xs text-muted-foreground">
-            {t("query.rows", { count: totalRows })}
+            {t("query.totalRows", { count: totalRows })}
           </span>
         )}
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-6 w-6"
+          onClick={handleRefresh}
+          disabled={loading}
+          title={t("query.refreshTable")}
+        >
+          <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
+        </Button>
         <div className="ml-auto flex items-center gap-1">
+          {/* Page size selector */}
+          <Select value={String(pageSize)} onValueChange={(v) => { setPageSize(Number(v)); setPage(0); }}>
+            <SelectTrigger size="sm" className="h-6 w-[80px] text-xs">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {PAGE_SIZES.map((s) => (
+                <SelectItem key={s} value={String(s)} className="text-xs">
+                  {t("query.perPage", { count: s })}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          {/* First page */}
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-6 w-6"
+            disabled={!hasPrev || loading}
+            onClick={() => setPage(0)}
+            title={t("query.firstPage")}
+          >
+            <ChevronsLeft className="h-3.5 w-3.5" />
+          </Button>
+          {/* Previous page */}
           <Button
             variant="ghost"
             size="icon"
@@ -198,9 +300,20 @@ export function TableDataTab({ tabId, database, table }: TableDataTabProps) {
           >
             <ChevronLeft className="h-3.5 w-3.5" />
           </Button>
-          <span className="text-xs text-muted-foreground min-w-[60px] text-center">
-            {t("query.page", { page: page + 1 })}
-          </span>
+          {/* Page input */}
+          <Input
+            className="h-6 w-[48px] text-xs text-center px-1"
+            value={pageInput}
+            onChange={(e) => setPageInput(e.target.value)}
+            onBlur={handlePageInputConfirm}
+            onKeyDown={(e) => { if (e.key === "Enter") handlePageInputConfirm(); }}
+          />
+          {totalPages != null && (
+            <span className="text-xs text-muted-foreground whitespace-nowrap">
+              / {totalPages}
+            </span>
+          )}
+          {/* Next page */}
           <Button
             variant="ghost"
             size="icon"
@@ -211,6 +324,19 @@ export function TableDataTab({ tabId, database, table }: TableDataTabProps) {
           >
             <ChevronRight className="h-3.5 w-3.5" />
           </Button>
+          {/* Last page */}
+          {totalPages != null && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-6 w-6"
+              disabled={!hasNext || loading}
+              onClick={() => setPage(totalPages - 1)}
+              title={t("query.lastPage")}
+            >
+              <ChevronsRight className="h-3.5 w-3.5" />
+            </Button>
+          )}
         </div>
       </div>
 
@@ -223,6 +349,8 @@ export function TableDataTab({ tabId, database, table }: TableDataTabProps) {
         editable
         edits={edits}
         onCellEdit={handleCellEdit}
+        showRowNumber
+        rowNumberOffset={page * pageSize}
       />
 
       {/* Edit action bar */}
@@ -246,7 +374,7 @@ export function TableDataTab({ tabId, database, table }: TableDataTabProps) {
               variant="default"
               size="sm"
               className="h-7 text-xs gap-1"
-              onClick={handleSubmit}
+              onClick={() => setShowSqlPreview(true)}
               disabled={submitting}
             >
               {submitting ? (
@@ -259,6 +387,15 @@ export function TableDataTab({ tabId, database, table }: TableDataTabProps) {
           </div>
         </div>
       )}
+
+      {/* SQL Preview confirmation dialog */}
+      <SqlPreviewDialog
+        open={showSqlPreview}
+        onOpenChange={setShowSqlPreview}
+        statements={previewStatements}
+        onConfirm={handleSubmit}
+        submitting={submitting}
+      />
     </div>
   );
 }

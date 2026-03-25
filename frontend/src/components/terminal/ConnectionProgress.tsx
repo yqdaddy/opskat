@@ -262,7 +262,6 @@ function AuthChallengeForm({
   const [answers, setAnswers] = useState<string[]>(() =>
     new Array(prompts.length).fill("")
   );
-
   const handleSubmit = () => {
     onSubmit(answers);
   };

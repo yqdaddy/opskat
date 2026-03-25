@@ -16,6 +16,7 @@ import (
 	"github.com/opskat/opskat/internal/repository/group_repo"
 	"github.com/opskat/opskat/internal/repository/host_key_repo"
 	"github.com/opskat/opskat/internal/repository/plan_repo"
+	"github.com/opskat/opskat/internal/repository/policy_group_repo"
 	"github.com/opskat/opskat/internal/service/credential_svc"
 	"github.com/opskat/opskat/migrations"
 
@@ -87,6 +88,17 @@ func Init(ctx context.Context, opts Options) error {
 
 	credential_svc.SetDefault(credential_svc.New(masterKey, salt))
 
+	registerRepositories()
+
+	if err := migrations.RunMigrations(db.Default()); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// registerRepositories 注册所有 Repository 单例
+func registerRepositories() {
 	asset_repo.RegisterAsset(asset_repo.NewAsset())
 	audit_repo.RegisterAudit(audit_repo.NewAudit())
 	conversation_repo.RegisterConversation(conversation_repo.NewConversation())
@@ -95,12 +107,7 @@ func Init(ctx context.Context, opts Options) error {
 	credential_repo.RegisterCredential(credential_repo.NewCredential())
 	host_key_repo.RegisterHostKey(host_key_repo.NewHostKey())
 	forward_repo.RegisterForward(forward_repo.NewForward())
-
-	if err := migrations.RunMigrations(db.Default()); err != nil {
-		return err
-	}
-
-	return nil
+	policy_group_repo.RegisterPolicyGroup(policy_group_repo.NewPolicyGroup())
 }
 
 // resolveKDFSalt 从 config.json 获取 salt，不存在则生成并持久化

@@ -7,9 +7,10 @@ import {
   SplitSSH,
   UpdateAssetPassword,
 } from "../../wailsjs/go/main/App";
-import { main } from "../../wailsjs/go/models";
+import { main, asset_entity } from "../../wailsjs/go/models";
 import { EventsOn, EventsOff } from "../../wailsjs/runtime/runtime";
-import { useTabStore, registerTabCloseHook, type TerminalTabMeta } from "./tabStore";
+import { useTabStore, registerTabCloseHook, registerTabRestoreHook, type TerminalTabMeta } from "./tabStore";
+import { useAssetStore } from "./assetStore";
 
 // Split tree types
 export type SplitNode =
@@ -129,6 +130,118 @@ function setRatioAtPath(
   return tree;
 }
 
+/** Returns the set of asset IDs that have at least one connected terminal pane. */
+export function getTerminalActiveAssetIds(): Set<number> {
+  const { tabData } = useTerminalStore.getState();
+  const tabs = useTabStore.getState().tabs;
+  const ids = new Set<number>();
+  for (const tab of tabs) {
+    if (tab.type !== "terminal") continue;
+    const d = tabData[tab.id];
+    if (d && Object.values(d.panes).some((p) => p.connected)) {
+      ids.add((tab.meta as TerminalTabMeta).assetId);
+    }
+  }
+  return ids;
+}
+
+// === Connection event listener (shared by connect/reconnect/restore) ===
+
+/**
+ * Sets up event listeners for an SSH connection's progress events.
+ * Handles progress/error/auth_challenge uniformly; delegates "connected" to callback.
+ *
+ * @param connectionId - The connection ID from ConnectSSHAsync
+ * @param onConnected - Called when SSH session is established (receives sessionId)
+ * @param onFinished - Optional cleanup called on both "connected" and "error" (e.g. clear connectingAssetIds)
+ */
+function setupConnectionListener(
+  connectionId: string,
+  onConnected: (sessionId: string) => void,
+  onFinished?: () => void,
+) {
+  const eventName = `ssh:connect:${connectionId}`;
+  EventsOn(eventName, (event: {
+    type: string;
+    step?: string;
+    message?: string;
+    sessionId?: string;
+    error?: string;
+    authFailed?: boolean;
+    challengeId?: string;
+    prompts?: string[];
+    echo?: boolean[];
+  }) => {
+    const state = useTerminalStore.getState();
+    const conn = state.connections[connectionId];
+    if (!conn) return;
+
+    switch (event.type) {
+      case "progress":
+        useTerminalStore.setState((s) => ({
+          connections: {
+            ...s.connections,
+            [connectionId]: {
+              ...s.connections[connectionId],
+              currentStep: (event.step as ConnectionStep) || s.connections[connectionId].currentStep,
+              logs: [
+                ...s.connections[connectionId].logs,
+                { message: event.message || "", timestamp: Date.now(), type: "info" as const },
+              ],
+            },
+          },
+        }));
+        break;
+
+      case "connected":
+        onConnected(event.sessionId!);
+        EventsOff(eventName);
+        onFinished?.();
+        break;
+
+      case "error":
+        useTerminalStore.setState((s) => ({
+          connections: {
+            ...s.connections,
+            [connectionId]: {
+              ...s.connections[connectionId],
+              status: "error",
+              error: event.error,
+              authFailed: event.authFailed,
+              logs: [
+                ...s.connections[connectionId].logs,
+                { message: event.error || "连接失败", timestamp: Date.now(), type: "error" as const },
+              ],
+            },
+          },
+        }));
+        onFinished?.();
+        break;
+
+      case "auth_challenge":
+        useTerminalStore.setState((s) => ({
+          connections: {
+            ...s.connections,
+            [connectionId]: {
+              ...s.connections[connectionId],
+              status: "auth_challenge",
+              challenge: {
+                challengeId: event.challengeId!,
+                prompts: event.prompts || [],
+                echo: event.echo || [],
+              },
+              logs: [
+                ...s.connections[connectionId].logs,
+                { message: "等待用户输入认证信息...", timestamp: Date.now(), type: "info" as const },
+              ],
+            },
+          },
+        }));
+        break;
+    }
+  });
+}
+
 interface TerminalState {
   // Business data keyed by tab id
   tabData: Record<string, TerminalTabData>;
@@ -136,13 +249,8 @@ interface TerminalState {
   connections: Record<string, ConnectionState>;
 
   connect: (
-    assetId: number,
-    assetName: string,
-    assetIcon: string,
-    password: string,
-    cols: number,
-    rows: number,
-    metadata?: SSHConnectMetadata
+    asset: asset_entity.Asset,
+    password?: string,
   ) => Promise<string>;
   reconnect: (tabId: string) => void;
   disconnect: (sessionId: string) => void;
@@ -168,7 +276,16 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
   connectingAssetIds: new Set(),
   connections: {},
 
-  connect: async (assetId, assetName, assetIcon, password, cols, rows, metadata) => {
+  connect: async (asset, password = "") => {
+    const assetId = asset.ID;
+    const assetPath = useAssetStore.getState().getAssetPath(asset);
+    const assetIcon = asset.Icon || "";
+    let metadata: SSHConnectMetadata | undefined;
+    try {
+      const cfg = JSON.parse(asset.Config || "{}");
+      metadata = { host: cfg.host || "", port: cfg.port || 22, username: cfg.username || "" };
+    } catch { /* ignore */ }
+
     const tabStore = useTabStore.getState();
 
     // If there's already a connecting/error tab for this asset, switch to it
@@ -193,8 +310,8 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
         assetId,
         password,
         key: "",
-        cols,
-        rows,
+        cols: 80,
+        rows: 24,
       });
 
       const connectionId = await ConnectSSHAsync(req);
@@ -203,22 +320,12 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
       tabStore.openTab({
         id: connectionId,
         type: "terminal",
-        label: assetName,
+        label: assetPath,
         icon: assetIcon || undefined,
-        meta: { type: "terminal", assetId, assetName, assetIcon: assetIcon || "", host: metadata?.host || "", port: metadata?.port || 22, username: metadata?.username || "" },
+        meta: { type: "terminal", assetId, assetName: assetPath, assetIcon: assetIcon || "", host: metadata?.host || "", port: metadata?.port || 22, username: metadata?.username || "" },
       });
 
       // Create business data
-      const connState: ConnectionState = {
-        connectionId,
-        assetId,
-        assetName,
-        password,
-        logs: [],
-        status: "connecting",
-        currentStep: "resolve",
-      };
-
       set((state) => ({
         tabData: {
           ...state.tabData,
@@ -228,129 +335,59 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
             panes: {},
           },
         },
-        connections: { ...state.connections, [connectionId]: connState },
+        connections: {
+          ...state.connections,
+          [connectionId]: {
+            connectionId,
+            assetId,
+            assetName: assetPath,
+            password,
+            logs: [],
+            status: "connecting",
+            currentStep: "resolve",
+          },
+        },
       }));
 
-      // Listen for connection progress
-      const eventName = `ssh:connect:${connectionId}`;
-      EventsOn(eventName, (event: {
-        type: string;
-        step?: string;
-        message?: string;
-        sessionId?: string;
-        error?: string;
-        authFailed?: boolean;
-        challengeId?: string;
-        prompts?: string[];
-        echo?: boolean[];
-      }) => {
-        const state = get();
-        const conn = state.connections[connectionId];
-        if (!conn) return;
+      setupConnectionListener(
+        connectionId,
+        (sessionId) => {
+          // Migrate tabData from connectionId key to sessionId key
+          set((s) => {
+            const data = s.tabData[connectionId];
+            if (!data) return s;
 
-        switch (event.type) {
-          case "progress":
-            set((s) => ({
-              connections: {
-                ...s.connections,
-                [connectionId]: {
-                  ...s.connections[connectionId],
-                  currentStep: (event.step as ConnectionStep) || s.connections[connectionId].currentStep,
-                  logs: [
-                    ...s.connections[connectionId].logs,
-                    { message: event.message || "", timestamp: Date.now(), type: "info" as const },
-                  ],
-                },
-              },
-            }));
-            break;
-
-          case "connected": {
-            const sessionId = event.sessionId!;
-
-            // Update business data: replace connecting node with terminal node
-            set((s) => {
-              const data = s.tabData[connectionId];
-              if (!data) return s;
-
-              const newTree = replaceNode(data.splitTree, connectionId, {
-                type: "terminal",
-                sessionId,
-              });
-
-              const newTabData = { ...s.tabData };
-              delete newTabData[connectionId];
-              newTabData[sessionId] = {
-                splitTree: newTree,
-                activePaneId: sessionId,
-                panes: { [sessionId]: { sessionId, connected: true, connectedAt: Date.now() } },
-              };
-
-              const newConnections = { ...s.connections };
-              delete newConnections[connectionId];
-
-              return { tabData: newTabData, connections: newConnections };
+            const newTree = replaceNode(data.splitTree, connectionId, {
+              type: "terminal",
+              sessionId,
             });
 
-            // Update tab id in tabStore
-            tabStore.replaceTabId(connectionId, sessionId);
+            const newTabData = { ...s.tabData };
+            delete newTabData[connectionId];
+            newTabData[sessionId] = {
+              splitTree: newTree,
+              activePaneId: sessionId,
+              panes: { [sessionId]: { sessionId, connected: true, connectedAt: Date.now() } },
+            };
 
-            EventsOff(eventName);
+            const newConnections = { ...s.connections };
+            delete newConnections[connectionId];
 
-            set((s) => {
-              const next = new Set(s.connectingAssetIds);
-              next.delete(assetId);
-              return { connectingAssetIds: next };
-            });
-            break;
-          }
+            return { tabData: newTabData, connections: newConnections };
+          });
 
-          case "error":
-            set((s) => ({
-              connections: {
-                ...s.connections,
-                [connectionId]: {
-                  ...s.connections[connectionId],
-                  status: "error",
-                  error: event.error,
-                  authFailed: event.authFailed,
-                  logs: [
-                    ...s.connections[connectionId].logs,
-                    { message: event.error || "连接失败", timestamp: Date.now(), type: "error" as const },
-                  ],
-                },
-              },
-            }));
-
-            set((s) => {
-              const next = new Set(s.connectingAssetIds);
-              next.delete(assetId);
-              return { connectingAssetIds: next };
-            });
-            break;
-
-          case "auth_challenge":
-            set((s) => ({
-              connections: {
-                ...s.connections,
-                [connectionId]: {
-                  ...s.connections[connectionId],
-                  status: "auth_challenge",
-                  challenge: {
-                    challengeId: event.challengeId!,
-                    prompts: event.prompts || [],
-                    echo: event.echo || [],
-                  },
-                  logs: [
-                    ...s.connections[connectionId].logs,
-                    { message: "等待用户输入认证信息...", timestamp: Date.now(), type: "info" as const },
-                  ],
-                },
-              },
-            }));
-            break;
-        }
-      });
+          // Update tab id in tabStore
+          tabStore.replaceTabId(connectionId, sessionId);
+        },
+        () => {
+          // Clear connectingAssetIds on connected or error
+          set((s) => {
+            const next = new Set(s.connectingAssetIds);
+            next.delete(assetId);
+            return { connectingAssetIds: next };
+          });
+        },
+      );
 
       return connectionId;
     } catch (e) {
@@ -420,110 +457,39 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
         };
       });
 
-      const eventName = `ssh:connect:${connectionId}`;
-      EventsOn(eventName, (event: {
-        type: string;
-        step?: string;
-        message?: string;
-        sessionId?: string;
-        error?: string;
-        authFailed?: boolean;
-        challengeId?: string;
-        prompts?: string[];
-        echo?: boolean[];
-      }) => {
-        const state = get();
-        const conn = state.connections[connectionId];
-        if (!conn) return;
+      setupConnectionListener(
+        connectionId,
+        (newSessionId) => {
+          set((s) => {
+            const d = s.tabData[tabId];
+            if (!d) return s;
 
-        switch (event.type) {
-          case "progress":
-            set((s) => ({
-              connections: {
-                ...s.connections,
-                [connectionId]: {
-                  ...s.connections[connectionId],
-                  currentStep: (event.step as ConnectionStep) || s.connections[connectionId].currentStep,
-                  logs: [
-                    ...s.connections[connectionId].logs,
-                    { message: event.message || "", timestamp: Date.now(), type: "info" as const },
-                  ],
-                },
-              },
-            }));
-            break;
-
-          case "connected": {
-            const newSessionId = event.sessionId!;
-            set((s) => {
-              const d = s.tabData[tabId];
-              if (!d) return s;
-
-              const newTree = replaceNode(d.splitTree, connectionId, {
-                type: "terminal",
-                sessionId: newSessionId,
-              });
-
-              const newPanes = {
-                ...d.panes,
-                [newSessionId]: { sessionId: newSessionId, connected: true, connectedAt: Date.now() },
-              };
-
-              const newConnections = { ...s.connections };
-              delete newConnections[connectionId];
-
-              return {
-                tabData: {
-                  ...s.tabData,
-                  [tabId]: { ...d, splitTree: newTree, activePaneId: newSessionId, panes: newPanes },
-                },
-                connections: newConnections,
-              };
+            const newTree = replaceNode(d.splitTree, connectionId, {
+              type: "terminal",
+              sessionId: newSessionId,
             });
-            EventsOff(eventName);
-            break;
-          }
 
-          case "error":
-            set((s) => ({
-              connections: {
-                ...s.connections,
-                [connectionId]: {
-                  ...s.connections[connectionId],
-                  status: "error",
-                  error: event.error,
-                  authFailed: event.authFailed,
-                  logs: [
-                    ...s.connections[connectionId].logs,
-                    { message: event.error || "连接失败", timestamp: Date.now(), type: "error" as const },
-                  ],
-                },
-              },
-            }));
-            break;
+            const newConnections = { ...s.connections };
+            delete newConnections[connectionId];
 
-          case "auth_challenge":
-            set((s) => ({
-              connections: {
-                ...s.connections,
-                [connectionId]: {
-                  ...s.connections[connectionId],
-                  status: "auth_challenge",
-                  challenge: {
-                    challengeId: event.challengeId!,
-                    prompts: event.prompts || [],
-                    echo: event.echo || [],
+            return {
+              tabData: {
+                ...s.tabData,
+                [tabId]: {
+                  ...d,
+                  splitTree: newTree,
+                  activePaneId: newSessionId,
+                  panes: {
+                    ...d.panes,
+                    [newSessionId]: { sessionId: newSessionId, connected: true, connectedAt: Date.now() },
                   },
-                  logs: [
-                    ...s.connections[connectionId].logs,
-                    { message: "等待用户输入认证信息...", timestamp: Date.now(), type: "info" as const },
-                  ],
                 },
               },
-            }));
-            break;
-        }
-      });
+              connections: newConnections,
+            };
+          });
+        },
+      );
     }).catch((err) => {
       console.error("Reconnect failed:", err);
     });
@@ -533,19 +499,16 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
     const conn = get().connections[connectionId];
     if (!conn) return;
 
-    const tabStore = useTabStore.getState();
-    const tab = tabStore.tabs.find((t) => t.id === connectionId);
-    const meta = tab?.meta as TerminalTabMeta | undefined;
-    const metadata: SSHConnectMetadata | undefined = meta ? {
-      host: meta.host,
-      port: meta.port,
-      username: meta.username,
-    } : undefined;
+    // Find the asset from assetStore
+    const assetStore = useAssetStore.getState();
+    const asset = assetStore.assets.find((a) => a.ID === conn.assetId);
+    if (!asset) return;
 
     // Clean up old event listeners and connection state
     EventsOff(`ssh:connect:${connectionId}`);
 
     // Remove old tab and tabData
+    const tabStore = useTabStore.getState();
     set((s) => {
       const newConnections = { ...s.connections };
       delete newConnections[connectionId];
@@ -556,8 +519,7 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
     tabStore.closeTab(connectionId);
 
     // Reconnect with new or empty password
-    const newPassword = password !== undefined ? password : "";
-    get().connect(conn.assetId, conn.assetName, meta?.assetIcon || "", newPassword, 80, 24, metadata);
+    get().connect(asset, password !== undefined ? password : "");
 
     if (password) {
       UpdateAssetPassword(conn.assetId, password).catch(() => {});
@@ -810,15 +772,14 @@ registerTabCloseHook((tab) => {
   });
 });
 
-// === Restore terminal tabData for tabs already in tabStore ===
+// === Restore Hook: initialize tabData + auto-reconnect ===
 
-(function _restoreTerminalTabData() {
-  const tabs = useTabStore.getState().tabs.filter((t) => t.type === "terminal");
+registerTabRestoreHook("terminal", (tabs) => {
   if (tabs.length === 0) return;
 
+  // Initialize tabData as disconnected (reconnect will transition to connecting)
   const tabData: Record<string, TerminalTabData> = {};
   for (const tab of tabs) {
-    // Restored terminal tabs start as disconnected
     tabData[tab.id] = {
       splitTree: { type: "terminal", sessionId: tab.id },
       activePaneId: tab.id,
@@ -826,4 +787,9 @@ registerTabCloseHook((tab) => {
     };
   }
   useTerminalStore.setState({ tabData });
-})();
+
+  // Auto-reconnect each terminal tab
+  for (const tab of tabs) {
+    useTerminalStore.getState().reconnect(tab.id);
+  }
+});

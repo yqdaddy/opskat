@@ -1,6 +1,8 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useTranslation } from "react-i18next";
-import { Loader2 } from "lucide-react";
+import { createPortal } from "react-dom";
+import { Loader2, Copy } from "lucide-react";
+import { toast } from "sonner";
 
 export interface CellEdit {
   rowIdx: number;
@@ -16,6 +18,8 @@ interface QueryResultTableProps {
   editable?: boolean;
   edits?: Map<string, unknown>; // key: "rowIdx:col"
   onCellEdit?: (edit: CellEdit) => void;
+  showRowNumber?: boolean;
+  rowNumberOffset?: number;
 }
 
 function cellKey(rowIdx: number, col: string) {
@@ -30,11 +34,17 @@ export function QueryResultTable({
   editable,
   edits,
   onCellEdit,
+  showRowNumber,
+  rowNumberOffset = 0,
 }: QueryResultTableProps) {
   const { t } = useTranslation();
 
   const [editingCell, setEditingCell] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  // Context menu state
+  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; value: unknown } | null>(null);
+  const ctxMenuRef = useRef<HTMLDivElement>(null);
 
   // Focus input when editing starts
   useEffect(() => {
@@ -43,6 +53,26 @@ export function QueryResultTable({
       inputRef.current.select();
     }
   }, [editingCell]);
+
+  // Close context menu on outside click / escape
+  useEffect(() => {
+    if (!ctxMenu) return;
+    const close = () => setCtxMenu(null);
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") close(); };
+    const onPointer = (e: PointerEvent) => {
+      if (ctxMenuRef.current?.contains(e.target as Node)) return;
+      close();
+    };
+    const timer = setTimeout(() => {
+      document.addEventListener("pointerdown", onPointer, true);
+    }, 50);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      clearTimeout(timer);
+      document.removeEventListener("pointerdown", onPointer, true);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [ctxMenu]);
 
   const commitEdit = useCallback(
     (rowIdx: number, col: string, newValue: string) => {
@@ -59,6 +89,20 @@ export function QueryResultTable({
     },
     [rows, onCellEdit]
   );
+
+  const handleCopyCell = useCallback(() => {
+    if (!ctxMenu) return;
+    const text = ctxMenu.value == null ? "" : String(ctxMenu.value);
+    navigator.clipboard.writeText(text);
+    toast.success(t("query.copied"));
+    setCtxMenu(null);
+  }, [ctxMenu, t]);
+
+  const handleCellContextMenu = useCallback((e: React.MouseEvent, value: unknown) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setCtxMenu({ x: e.clientX, y: e.clientY, value });
+  }, []);
 
   if (loading) {
     return (
@@ -89,6 +133,11 @@ export function QueryResultTable({
       <table className="w-full border-collapse text-xs font-mono">
         <thead className="sticky top-0 z-10 bg-muted">
           <tr>
+            {showRowNumber && (
+              <th className="border border-border px-2 py-1.5 text-center font-semibold text-muted-foreground whitespace-nowrap w-[50px]">
+                #
+              </th>
+            )}
             {columns.map((col) => (
               <th
                 key={col}
@@ -105,6 +154,11 @@ export function QueryResultTable({
               key={idx}
               className={idx % 2 === 0 ? "bg-background" : "bg-muted/40"}
             >
+              {showRowNumber && (
+                <td className="border border-border px-2 py-1 text-center text-muted-foreground whitespace-nowrap w-[50px]">
+                  {rowNumberOffset + idx + 1}
+                </td>
+              )}
               {columns.map((col) => {
                 const ck = cellKey(idx, col);
                 const isEdited = edits?.has(ck);
@@ -124,6 +178,7 @@ export function QueryResultTable({
                       if (!editable) return;
                       setEditingCell(ck);
                     }}
+                    onContextMenu={(e) => handleCellContextMenu(e, displayValue)}
                   >
                     {isEditing ? (
                       <input
@@ -162,6 +217,25 @@ export function QueryResultTable({
           ))}
         </tbody>
       </table>
+
+      {/* Cell context menu */}
+      {ctxMenu && createPortal(
+        <div
+          ref={ctxMenuRef}
+          className="z-50 min-w-[8rem] overflow-hidden rounded-md border bg-popover p-1 text-popover-foreground shadow-md animate-in fade-in-0 zoom-in-95"
+          style={{ position: "fixed", top: ctxMenu.y + 2, left: ctxMenu.x + 2 }}
+        >
+          <div
+            role="menuitem"
+            className="relative flex cursor-default items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-hidden select-none hover:bg-accent hover:text-accent-foreground [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 [&_svg:not([class*='text-'])]:text-muted-foreground"
+            onClick={handleCopyCell}
+          >
+            <Copy className="h-3.5 w-3.5" />
+            {t("query.copyValue")}
+          </div>
+        </div>,
+        document.body
+      )}
     </div>
   );
 }

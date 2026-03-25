@@ -1,0 +1,348 @@
+import { useState, useEffect, useCallback } from "react";
+import { useTranslation } from "react-i18next";
+import { Lock, Copy, Trash2, Plus, Save } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Separator } from "@/components/ui/separator";
+import { PolicyTagEditor } from "@/components/asset/PolicyTagEditor";
+import { toast } from "sonner";
+import {
+  ListPolicyGroups,
+  CreatePolicyGroup,
+  UpdatePolicyGroup,
+  DeletePolicyGroup,
+  CopyPolicyGroup,
+} from "../../../wailsjs/go/main/App";
+import { policy_group_entity } from "../../../wailsjs/go/models";
+
+type TabType = "command" | "query" | "redis";
+
+interface PolicyGroupManagerProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  initialTab?: TabType;
+}
+
+const tabs: { key: TabType; label: string }[] = [
+  { key: "command", label: "SSH" },
+  { key: "query", label: "Database" },
+  { key: "redis", label: "Redis" },
+];
+
+interface EditState {
+  id: number;
+  name: string;
+  description: string;
+  policyType: string;
+  policy: Record<string, string[]>;
+}
+
+function parsePolicyJSON(json: string, policyType: string): Record<string, string[]> {
+  try {
+    const p = JSON.parse(json);
+    if (policyType === "query") {
+      return {
+        allow_types: p.allow_types || [],
+        deny_types: p.deny_types || [],
+        deny_flags: p.deny_flags || [],
+      };
+    }
+    return {
+      allow_list: p.allow_list || [],
+      deny_list: p.deny_list || [],
+    };
+  } catch {
+    return policyType === "query"
+      ? { allow_types: [], deny_types: [], deny_flags: [] }
+      : { allow_list: [], deny_list: [] };
+  }
+}
+
+function serializePolicy(policy: Record<string, string[]>): string {
+  const cleaned: Record<string, string[]> = {};
+  for (const [k, v] of Object.entries(policy)) {
+    if (v.length > 0) cleaned[k] = v;
+  }
+  return JSON.stringify(cleaned);
+}
+
+export function PolicyGroupManager({ open, onOpenChange, initialTab }: PolicyGroupManagerProps) {
+  const { t } = useTranslation();
+  const [activeTab, setActiveTab] = useState<TabType>(initialTab || "command");
+  const [groups, setGroups] = useState<policy_group_entity.PolicyGroupItem[]>([]);
+  const [editState, setEditState] = useState<EditState | null>(null);
+
+  const fetchGroups = useCallback(async () => {
+    try {
+      const items = await ListPolicyGroups(activeTab);
+      setGroups(items || []);
+    } catch {
+      setGroups([]);
+    }
+  }, [activeTab]);
+
+  useEffect(() => {
+    if (open) fetchGroups();
+  }, [open, fetchGroups]);
+
+  const handleCopy = async (id: number) => {
+    try {
+      await CopyPolicyGroup(id, "");
+      toast.success(t("asset.policyGroup.copySuccess"));
+      await fetchGroups();
+    } catch (e) {
+      toast.error(String(e));
+    }
+  };
+
+  const handleDelete = async (id: number) => {
+    try {
+      await DeletePolicyGroup(id);
+      toast.success(t("asset.policyGroup.deleteSuccess"));
+      if (editState?.id === id) setEditState(null);
+      await fetchGroups();
+    } catch (e) {
+      toast.error(String(e));
+    }
+  };
+
+  const handleCreate = () => {
+    setEditState({
+      id: 0,
+      name: "",
+      description: "",
+      policyType: activeTab,
+      policy: activeTab === "query"
+        ? { allow_types: [], deny_types: [], deny_flags: [] }
+        : { allow_list: [], deny_list: [] },
+    });
+  };
+
+  const handleEdit = (g: policy_group_entity.PolicyGroupItem) => {
+    setEditState({
+      id: g.id,
+      name: g.name,
+      description: g.description,
+      policyType: g.policyType,
+      policy: parsePolicyJSON(g.policy, g.policyType),
+    });
+  };
+
+  const handleSave = async () => {
+    if (!editState || !editState.name.trim()) {
+      toast.error(t("asset.policyGroup.nameRequired"));
+      return;
+    }
+
+    try {
+      const policyJSON = serializePolicy(editState.policy);
+      if (editState.id === 0) {
+        await CreatePolicyGroup(new policy_group_entity.PolicyGroup({
+          name: editState.name,
+          description: editState.description,
+          policyType: editState.policyType,
+          policy: policyJSON,
+        }));
+        toast.success(t("asset.policyGroup.saveSuccess"));
+      } else {
+        await UpdatePolicyGroup(new policy_group_entity.PolicyGroup({
+          id: editState.id,
+          name: editState.name,
+          description: editState.description,
+          policyType: editState.policyType,
+          policy: policyJSON,
+        }));
+        toast.success(t("asset.policyGroup.saveSuccess"));
+      }
+      setEditState(null);
+      await fetchGroups();
+    } catch (e) {
+      toast.error(String(e));
+    }
+  };
+
+  const updatePolicyField = (field: string, value: string[]) => {
+    if (!editState) return;
+    setEditState({
+      ...editState,
+      policy: { ...editState.policy, [field]: value },
+    });
+  };
+
+  const builtinGroups = groups.filter((g) => g.builtin);
+  const customGroups = groups.filter((g) => !g.builtin);
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-2xl max-h-[80vh] overflow-hidden flex flex-col">
+        <DialogHeader>
+          <DialogTitle>{t("asset.policyGroup.manage")}</DialogTitle>
+        </DialogHeader>
+
+        {/* Tabs */}
+        <div className="flex gap-1 border-b">
+          {tabs.map((tab) => (
+            <button
+              key={tab.key}
+              className={`px-3 py-1.5 text-xs font-medium border-b-2 transition-colors ${
+                activeTab === tab.key
+                  ? "border-primary text-foreground"
+                  : "border-transparent text-muted-foreground hover:text-foreground"
+              }`}
+              onClick={() => { setActiveTab(tab.key); setEditState(null); }}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
+        <div className="flex-1 overflow-y-auto space-y-4 py-2">
+          {/* Built-in groups */}
+          {builtinGroups.length > 0 && (
+            <div>
+              <div className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-2">
+                {t("asset.policyGroup.builtinSection")}
+              </div>
+              <div className="space-y-1">
+                {builtinGroups.map((g) => (
+                  <div key={g.id} className="flex items-center gap-2 rounded-md border px-3 py-2">
+                    <Lock className="h-3 w-3 text-muted-foreground shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <div className="text-xs font-medium truncate">{g.name}</div>
+                      {g.description && <div className="text-[10px] text-muted-foreground truncate">{g.description}</div>}
+                    </div>
+                    <Button variant="ghost" size="sm" className="h-6 px-2 text-[10px] gap-1" onClick={() => handleCopy(g.id)}>
+                      <Copy className="h-3 w-3" />
+                      {t("asset.policyGroup.copy")}
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Custom groups */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <div className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
+                {t("asset.policyGroup.customSection")}
+              </div>
+              <Button variant="outline" size="sm" className="h-6 px-2 text-[10px] gap-1" onClick={handleCreate}>
+                <Plus className="h-3 w-3" />
+                {t("asset.policyGroup.create")}
+              </Button>
+            </div>
+            {customGroups.length === 0 && !editState && (
+              <div className="text-center text-xs text-muted-foreground py-4">
+                {t("asset.policyGroup.empty")}
+              </div>
+            )}
+            <div className="space-y-1">
+              {customGroups.map((g) => (
+                <div
+                  key={g.id}
+                  className={`flex items-center gap-2 rounded-md border px-3 py-2 cursor-pointer hover:bg-accent/50 ${
+                    editState?.id === g.id ? "border-primary bg-accent/50" : ""
+                  }`}
+                  onClick={() => handleEdit(g)}
+                >
+                  <div className="flex-1 min-w-0">
+                    <div className="text-xs font-medium truncate">{g.name}</div>
+                    {g.description && <div className="text-[10px] text-muted-foreground truncate">{g.description}</div>}
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive"
+                    onClick={(e) => { e.stopPropagation(); handleDelete(g.id); }}
+                  >
+                    <Trash2 className="h-3 w-3" />
+                  </Button>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Edit panel */}
+          {editState && (
+            <>
+              <Separator />
+              <div className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <Input
+                    className="h-7 text-xs flex-1"
+                    placeholder={t("asset.policyGroup.namePlaceholder")}
+                    value={editState.name}
+                    onChange={(e) => setEditState({ ...editState, name: e.target.value })}
+                  />
+                  <Button size="sm" className="h-7 px-3 text-xs gap-1" onClick={handleSave}>
+                    <Save className="h-3 w-3" />
+                    {t("asset.policyGroup.save")}
+                  </Button>
+                </div>
+
+                <Input
+                  className="h-7 text-xs"
+                  placeholder={t("asset.policyGroup.descPlaceholder")}
+                  value={editState.description}
+                  onChange={(e) => setEditState({ ...editState, description: e.target.value })}
+                />
+
+                {editState.policyType === "query" ? (
+                  <div className="grid grid-cols-2 gap-3">
+                    <PolicyTagEditor
+                      label={t("asset.queryPolicyAllowTypes")}
+                      items={editState.policy.allow_types || []}
+                      onAdd={(val) => updatePolicyField("allow_types", [...(editState.policy.allow_types || []), val])}
+                      onRemove={(i) => updatePolicyField("allow_types", (editState.policy.allow_types || []).filter((_, idx) => idx !== i))}
+                      placeholder={t("asset.queryPolicyPlaceholder")}
+                      variant="allow"
+                    />
+                    <div className="space-y-3">
+                      <PolicyTagEditor
+                        label={t("asset.queryPolicyDenyTypes")}
+                        items={editState.policy.deny_types || []}
+                        onAdd={(val) => updatePolicyField("deny_types", [...(editState.policy.deny_types || []), val])}
+                        onRemove={(i) => updatePolicyField("deny_types", (editState.policy.deny_types || []).filter((_, idx) => idx !== i))}
+                        placeholder={t("asset.queryPolicyPlaceholder")}
+                        variant="deny"
+                      />
+                      <PolicyTagEditor
+                        label={t("asset.queryPolicyDenyFlags")}
+                        items={editState.policy.deny_flags || []}
+                        onAdd={(val) => updatePolicyField("deny_flags", [...(editState.policy.deny_flags || []), val])}
+                        onRemove={(i) => updatePolicyField("deny_flags", (editState.policy.deny_flags || []).filter((_, idx) => idx !== i))}
+                        placeholder={t("asset.queryPolicyFlagPlaceholder")}
+                        variant="warn"
+                      />
+                    </div>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 gap-3">
+                    <PolicyTagEditor
+                      label={t("asset.cmdPolicyAllowList")}
+                      items={editState.policy.allow_list || []}
+                      onAdd={(val) => updatePolicyField("allow_list", [...(editState.policy.allow_list || []), val])}
+                      onRemove={(i) => updatePolicyField("allow_list", (editState.policy.allow_list || []).filter((_, idx) => idx !== i))}
+                      placeholder={t("asset.cmdPolicyPlaceholder")}
+                      variant="allow"
+                    />
+                    <PolicyTagEditor
+                      label={t("asset.cmdPolicyDenyList")}
+                      items={editState.policy.deny_list || []}
+                      onAdd={(val) => updatePolicyField("deny_list", [...(editState.policy.deny_list || []), val])}
+                      onRemove={(i) => updatePolicyField("deny_list", (editState.policy.deny_list || []).filter((_, idx) => idx !== i))}
+                      placeholder={t("asset.cmdPolicyPlaceholder")}
+                      variant="deny"
+                    />
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}

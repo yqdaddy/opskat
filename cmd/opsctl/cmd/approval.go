@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/opskat/opskat/internal/ai"
 	"github.com/opskat/opskat/internal/approval"
@@ -31,13 +32,24 @@ func (ar ApprovalResult) ToCheckResult() *ai.CheckResult {
 	}
 }
 
-// requireApproval checks command policy first, then plan session, then session approval,
-// then requests desktop app approval.
-// Returns (result, nil) if decision made, (_, error) if communication failure.
+// requireApproval 检查命令策略 → Plan 匹配 → 桌面端审批。
+// exec/sql/redis 类型支持离线模式：策略/Plan 匹配通过则放行，否则拒绝并提示允许的命令。
+// 其他类型（cp/create/update）离线时直接报错。
 func requireApproval(ctx context.Context, req approval.ApprovalRequest) (ApprovalResult, error) {
-	// For exec commands, check allow/deny policy first
-	if req.Type == "exec" && req.AssetID > 0 && req.Command != "" {
-		result := ai.CheckPolicyOnly(ctx, req.AssetID, req.Command)
+	var policyHints []string // 保留 NeedConfirm 的提示信息，供离线拒绝使用
+
+	// Stage 1: 策略前置检查（exec/sql/redis）
+	if req.AssetID > 0 && req.Command != "" {
+		var result ai.CheckResult
+		switch req.Type {
+		case "exec":
+			result = ai.CheckPolicyOnly(ctx, req.AssetID, req.Command)
+		case "sql":
+			result = ai.CheckSQLPolicyForOpsctl(ctx, req.AssetID, req.Command)
+		case "redis":
+			result = ai.CheckRedisPolicyForOpsctl(ctx, req.AssetID, req.Command)
+		}
+
 		switch result.Decision {
 		case ai.Allow:
 			return ApprovalResult{
@@ -53,11 +65,12 @@ func requireApproval(ctx context.Context, req approval.ApprovalRequest) (Approva
 				MatchedPattern: result.MatchedPattern,
 				SessionID:      req.SessionID,
 			}, fmt.Errorf("command denied by policy: %s", result.Message)
-			// NeedConfirm -> fall through
+		default: // NeedConfirm -> fall through
+			policyHints = result.HintRules
 		}
 	}
 
-	// Auto-create session if none exists
+	// Stage 2: Auto-create session if none exists
 	if req.SessionID == "" {
 		id := uuid.New().String()
 		if err := writeActiveSession(id); err != nil {
@@ -66,7 +79,7 @@ func requireApproval(ctx context.Context, req approval.ApprovalRequest) (Approva
 		req.SessionID = id
 	}
 
-	// Check plan items with pattern matching
+	// Stage 3: Check plan items with pattern matching
 	if req.SessionID != "" && req.Command != "" {
 		items, err := plan_repo.Plan().ListApprovedItems(ctx, req.SessionID)
 		if err == nil && len(items) > 0 {
@@ -74,7 +87,7 @@ func requireApproval(ctx context.Context, req approval.ApprovalRequest) (Approva
 				if item.AssetID != 0 && item.AssetID != req.AssetID {
 					continue
 				}
-				if ai.MatchCommandRule(item.Command, req.Command) {
+				if matchPlanItem(req.Type, item.Command, req.Command) {
 					return ApprovalResult{
 						Decision:       ai.Allow,
 						DecisionSource: ai.SourcePlanAllow,
@@ -86,11 +99,10 @@ func requireApproval(ctx context.Context, req approval.ApprovalRequest) (Approva
 		}
 	}
 
-	// Connect to desktop app via Unix socket
+	// Stage 4: Connect to desktop app via Unix socket
 	dataDir := bootstrap.AppDataDir()
 	sockPath := approval.SocketPath(dataDir)
 
-	// 读取认证 token
 	authToken, err := bootstrap.ReadAuthToken(dataDir)
 	if err != nil {
 		logger.Default().Warn("read auth token", zap.Error(err))
@@ -98,7 +110,20 @@ func requireApproval(ctx context.Context, req approval.ApprovalRequest) (Approva
 
 	resp, err := approval.RequestApprovalWithToken(sockPath, authToken, req)
 	if err != nil {
-		return ApprovalResult{}, fmt.Errorf("desktop app is not running -- write operations require approval from the running desktop app\n(%v)", err)
+		// 桌面端不在线
+		switch req.Type {
+		case "exec", "sql", "redis":
+			// 离线拒绝：给出允许的命令提示
+			msg := formatOfflineDenyMessage(req.Type, req.Command, policyHints)
+			return ApprovalResult{
+				Decision:       ai.Deny,
+				DecisionSource: ai.SourcePolicyDeny,
+				SessionID:      req.SessionID,
+			}, fmt.Errorf("%s", msg)
+		default:
+			// cp/create/update 等：保持原有报错
+			return ApprovalResult{}, fmt.Errorf("desktop app is not running -- write operations require approval from the running desktop app\n(%v)", err)
+		}
 	}
 	if !resp.Approved {
 		reason := resp.Reason
@@ -129,4 +154,47 @@ func requireApproval(ctx context.Context, req approval.ApprovalRequest) (Approva
 		DecisionSource: source,
 		SessionID:      req.SessionID,
 	}, nil
+}
+
+// matchPlanItem 按请求类型选择合适的匹配函数匹配 plan item
+func matchPlanItem(reqType, pattern, command string) bool {
+	switch reqType {
+	case "redis":
+		return ai.MatchRedisRule(pattern, command)
+	default:
+		// exec 和 sql 都使用 MatchCommandRule
+		return ai.MatchCommandRule(pattern, command)
+	}
+}
+
+// formatOfflineDenyMessage 构造离线拒绝的错误信息，包含允许的命令提示
+func formatOfflineDenyMessage(reqType, command string, hints []string) string {
+	var sb strings.Builder
+	sb.WriteString("桌面端不在线，")
+
+	switch reqType {
+	case "exec":
+		sb.WriteString("命令未匹配任何允许策略")
+	case "sql":
+		sb.WriteString("SQL 语句未匹配允许策略")
+	case "redis":
+		sb.WriteString("Redis 命令未匹配允许策略")
+	}
+
+	if len(hints) > 0 {
+		switch reqType {
+		case "exec":
+			sb.WriteString("\n该资产允许的命令：\n")
+		case "sql":
+			sb.WriteString("\n该资产允许的 SQL 类型：\n")
+		case "redis":
+			sb.WriteString("\n该资产允许的 Redis 命令：\n")
+		}
+		for _, h := range hints {
+			fmt.Fprintf(&sb, "  - %s\n", h)
+		}
+	}
+
+	sb.WriteString("请调整命令或启动桌面端进行审批。")
+	return sb.String()
 }

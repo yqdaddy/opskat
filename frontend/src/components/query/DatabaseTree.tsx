@@ -9,19 +9,36 @@ import {
   RefreshCw,
   Loader2,
   AlertCircle,
+  Search,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+  ContextMenu,
+  ContextMenuTrigger,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+} from "@/components/ui/context-menu";
 import { useQueryStore } from "@/stores/queryStore";
+import { useTabStore, type QueryTabMeta } from "@/stores/tabStore";
 
 interface DatabaseTreeProps {
   tabId: string;
 }
 
+function quoteIdent(name: string, driver?: string): string {
+  if (driver === "postgresql") return `"${name}"`;
+  return `\`${name}\``;
+}
+
 export function DatabaseTree({ tabId }: DatabaseTreeProps) {
   const { t } = useTranslation();
-  const { dbStates, loadDatabases, toggleDbExpand, openTableTab, openSqlTab } =
+  const { dbStates, loadDatabases, toggleDbExpand, openTableTab, openSqlTab, refreshTables } =
     useQueryStore();
+
+  const tab = useTabStore((s) => s.tabs.find((t) => t.id === tabId));
+  const driver = (tab?.meta as QueryTabMeta | undefined)?.driver;
 
   const dbState = dbStates[tabId];
 
@@ -88,19 +105,38 @@ export function DatabaseTree({ tabId }: DatabaseTreeProps) {
 
               return (
                 <div key={db}>
-                  {/* Database node */}
-                  <div
-                    className="flex items-center gap-1.5 rounded-md px-2 py-1 text-xs cursor-pointer hover:bg-accent transition-colors duration-150"
-                    onClick={() => toggleDbExpand(tabId, db)}
-                  >
-                    {isExpanded ? (
-                      <ChevronDown className="h-3 w-3 shrink-0 text-muted-foreground" />
-                    ) : (
-                      <ChevronRight className="h-3 w-3 shrink-0 text-muted-foreground" />
-                    )}
-                    <Database className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                    <span className="truncate">{db}</span>
-                  </div>
+                  {/* Database node with context menu */}
+                  <ContextMenu>
+                    <ContextMenuTrigger className="block w-full">
+                      <div
+                        className="flex items-center gap-1.5 rounded-md px-2 py-1 text-xs cursor-pointer hover:bg-accent transition-colors duration-150"
+                        onClick={() => toggleDbExpand(tabId, db)}
+                      >
+                        {isExpanded ? (
+                          <ChevronDown className="h-3 w-3 shrink-0 text-muted-foreground" />
+                        ) : (
+                          <ChevronRight className="h-3 w-3 shrink-0 text-muted-foreground" />
+                        )}
+                        <Database className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                        <span className="truncate">{db}</span>
+                      </div>
+                    </ContextMenuTrigger>
+                    <ContextMenuContent>
+                      <ContextMenuItem
+                        onClick={() => openSqlTab(tabId, db)}
+                      >
+                        <Search className="h-3.5 w-3.5" />
+                        {t("query.newSql")}
+                      </ContextMenuItem>
+                      <ContextMenuSeparator />
+                      <ContextMenuItem
+                        onClick={() => refreshTables(tabId, db)}
+                      >
+                        <RefreshCw className="h-3.5 w-3.5" />
+                        {t("query.refreshTables")}
+                      </ContextMenuItem>
+                    </ContextMenuContent>
+                  </ContextMenu>
 
                   {/* Tables */}
                   {isExpanded && (
@@ -115,16 +151,38 @@ export function DatabaseTree({ tabId }: DatabaseTreeProps) {
                         </div>
                       ) : (
                         dbTables.map((tbl) => (
-                          <div
-                            key={tbl}
-                            className="flex items-center gap-1.5 rounded-md px-2 py-1 text-xs cursor-pointer hover:bg-accent transition-colors duration-150"
-                            onDoubleClick={() =>
-                              openTableTab(tabId, db, tbl)
-                            }
-                          >
-                            <Table2 className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                            <span className="truncate">{tbl}</span>
-                          </div>
+                          <ContextMenu key={tbl}>
+                            <ContextMenuTrigger className="block w-full">
+                              <div
+                                className="flex items-center gap-1.5 rounded-md px-2 py-1 text-xs cursor-pointer hover:bg-accent transition-colors duration-150"
+                                onClick={() =>
+                                  openTableTab(tabId, db, tbl)
+                                }
+                              >
+                                <Table2 className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                                <span className="truncate">{tbl}</span>
+                              </div>
+                            </ContextMenuTrigger>
+                            <ContextMenuContent>
+                              <ContextMenuItem
+                                onClick={() => openTableTab(tabId, db, tbl)}
+                              >
+                                <Table2 className="h-3.5 w-3.5" />
+                                {t("query.openTable")}
+                              </ContextMenuItem>
+                              <ContextMenuItem
+                                onClick={() => {
+                                  const tableName = driver === "postgresql"
+                                    ? `"${tbl}"`
+                                    : `${quoteIdent(db, driver)}.${quoteIdent(tbl, driver)}`;
+                                  openSqlTab(tabId, db, `SELECT * FROM ${tableName} LIMIT 100`);
+                                }}
+                              >
+                                <Search className="h-3.5 w-3.5" />
+                                {t("query.newSql")}
+                              </ContextMenuItem>
+                            </ContextMenuContent>
+                          </ContextMenu>
                         ))
                       )}
                     </div>

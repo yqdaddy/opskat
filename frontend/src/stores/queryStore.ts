@@ -1,7 +1,8 @@
 import { create } from "zustand";
 import { ExecuteSQL, ExecuteRedis, ExecuteRedisArgs } from "../../wailsjs/go/main/App";
 import { asset_entity } from "../../wailsjs/go/models";
-import { useTabStore, registerTabCloseHook } from "./tabStore";
+import { useTabStore, registerTabCloseHook, registerTabRestoreHook, type QueryTabMeta } from "./tabStore";
+import { useAssetStore } from "./assetStore";
 
 // --- Types ---
 
@@ -64,9 +65,10 @@ interface QueryState {
   // Database actions
   loadDatabases: (tabId: string) => Promise<void>;
   loadTables: (tabId: string, database: string) => Promise<void>;
+  refreshTables: (tabId: string, database: string) => Promise<void>;
   toggleDbExpand: (tabId: string, database: string) => void;
   openTableTab: (tabId: string, database: string, table: string) => void;
-  openSqlTab: (tabId: string) => void;
+  openSqlTab: (tabId: string, database?: string, sql?: string) => void;
   closeInnerTab: (tabId: string, innerTabId: string) => void;
   setActiveInnerTab: (tabId: string, innerTabId: string) => void;
   updateInnerTab: (tabId: string, innerTabId: string, patch: Record<string, unknown>) => void;
@@ -128,6 +130,17 @@ interface RedisResult {
 
 // --- Store ---
 
+/** Returns the set of asset IDs that have an open query tab. */
+export function getQueryActiveAssetIds(): Set<number> {
+  const tabs = useTabStore.getState().tabs;
+  const ids = new Set<number>();
+  for (const tab of tabs) {
+    if (tab.type !== "query") continue;
+    ids.add((tab.meta as QueryTabMeta).assetId);
+  }
+  return ids;
+}
+
 // Helper: get query tab info from tabStore
 function getQueryTabFromTabStore(tabId: string): QueryTab | undefined {
   const tab = useTabStore.getState().tabs.find((t) => t.id === tabId);
@@ -166,10 +179,11 @@ export const useQueryStore = create<QueryState>((set, get) => ({
       defaultDatabase = cfg.database;
     } catch { /* ignore */ }
 
+    const assetPath = useAssetStore.getState().getAssetPath(asset);
     tabStore.openTab({
       id: tabId,
       type: "query",
-      label: asset.Name,
+      label: assetPath,
       icon: asset.Icon || undefined,
       meta: {
         type: "query",
@@ -267,6 +281,22 @@ export const useQueryStore = create<QueryState>((set, get) => ({
     }
   },
 
+  refreshTables: async (tabId, database) => {
+    const state = get().dbStates[tabId];
+    if (!state) return;
+    // Clear existing tables for this database and reload
+    set((s) => ({
+      dbStates: {
+        ...s.dbStates,
+        [tabId]: {
+          ...s.dbStates[tabId],
+          tables: { ...s.dbStates[tabId].tables, [database]: undefined as unknown as string[] },
+        },
+      },
+    }));
+    await get().loadTables(tabId, database);
+  },
+
   toggleDbExpand: (tabId, database) => {
     const state = get().dbStates[tabId];
     if (!state) return;
@@ -310,7 +340,7 @@ export const useQueryStore = create<QueryState>((set, get) => ({
     }));
   },
 
-  openSqlTab: (tabId) => {
+  openSqlTab: (tabId, database?, sql?) => {
     const state = get().dbStates[tabId];
     if (!state) return;
     const count = state.innerTabs.filter((t) => t.type === "sql").length + 1;
@@ -320,7 +350,7 @@ export const useQueryStore = create<QueryState>((set, get) => ({
         ...s.dbStates,
         [tabId]: {
           ...state,
-          innerTabs: [...state.innerTabs, { id: innerId, type: "sql", title: `SQL ${count}` }],
+          innerTabs: [...state.innerTabs, { id: innerId, type: "sql", title: `SQL ${count}`, sql, selectedDb: database }],
           activeInnerTabId: innerId,
         },
       },
@@ -729,16 +759,15 @@ registerTabCloseHook((tab) => {
   });
 });
 
-// === Restore query tab data for tabs already in tabStore ===
+// === Restore Hook: initialize query tab states ===
 
-(function _restoreQueryTabData() {
-  const tabs = useTabStore.getState().tabs.filter((t) => t.type === "query");
+registerTabRestoreHook("query", (tabs) => {
   if (tabs.length === 0) return;
 
   const dbStates: Record<string, DatabaseTabState> = {};
   const redisStates: Record<string, RedisTabState> = {};
   for (const tab of tabs) {
-    const m = tab.meta as import("./tabStore").QueryTabMeta;
+    const m = tab.meta as QueryTabMeta;
     if (m.assetType === "database") {
       dbStates[tab.id] = defaultDbState();
     } else {
@@ -746,4 +775,4 @@ registerTabCloseHook((tab) => {
     }
   }
   useQueryStore.setState({ dbStates, redisStates });
-})();
+});
