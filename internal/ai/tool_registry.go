@@ -182,6 +182,31 @@ func AllToolDefs() []ToolDef {
 				return "grant: " + v
 			},
 		},
+		{
+			Name:        "spawn_agent",
+			Description: "Spawn a sub-agent to perform a complex task independently. The sub-agent has its own conversation context and session. Use this for: multi-step exploration, parallel investigation across assets, or tasks that require many tool calls. The sub-agent will request its own permissions as needed.",
+			Params: []ParamDef{
+				{Name: "role", Type: ParamString, Description: "Role description for the sub-agent (e.g., 'Server environment explorer')", Required: true},
+				{Name: "task", Type: ParamString, Description: "Detailed task description for the sub-agent", Required: true},
+				{Name: "tools", Type: ParamString, Description: "JSON array of tool names the sub-agent can use. Omit for all tools."},
+			},
+			Handler: handleSpawnAgent,
+		},
+		{
+			Name:        "batch_command",
+			Description: "Execute commands on multiple assets in parallel. Supports exec (SSH), sql (database), and redis command types. Commands are policy-checked and require user confirmation if needed. Results are returned per-asset.",
+			Params: []ParamDef{
+				{Name: "commands", Type: ParamString, Description: `JSON array of commands. Each item: {"asset": "name-or-id", "type": "exec|sql|redis", "command": "..."}. Type defaults to "exec".`, Required: true},
+			},
+			Handler: handleBatchCommand,
+			CommandExtractor: func(args map[string]any) string {
+				if cmds, ok := args["commands"]; ok {
+					b, _ := json.Marshal(cmds)
+					return string(b)
+				}
+				return ""
+			},
+		},
 	}
 }
 

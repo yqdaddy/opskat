@@ -479,7 +479,15 @@
     "permissionPatternPlaceholder": "命令模式，支持 * 通配符",
     "permissionApprove": "批准",
     "deleteConversationTitle": "删除对话",
-    "deleteConversationDesc": "确定要删除这个对话吗？此操作不可撤销。"
+    "deleteConversationDesc": "确定要删除这个对话吗？此操作不可撤销。",
+    "agentStart": "子任务开始",
+    "agentEnd": "子任务完成",
+    "agentTask": "任务",
+    "batchConfirmTitle": "批量执行确认",
+    "batchAutoAllowed": "已自动放行",
+    "batchNeedConfirm": "条命令需要确认",
+    "batchAllowAll": "全部允许",
+    "notificationPermissionNeeded": "有权限确认需要处理"
   },
   "shortcut": {
     "title": "快捷键",

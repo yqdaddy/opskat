@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useAIStore, useAISendOnEnter, type ChatMessage } from "@/stores/aiStore";
 import { ToolBlock } from "@/components/ai/ToolBlock";
+import { AgentBlock } from "@/components/ai/AgentBlock";
 import { AISetupWizard } from "@/components/ai/AISetupWizard";
 
 interface AIChatContentProps {
@@ -170,6 +171,8 @@ function AssistantMessage({ msg }: { msg: ChatMessage }) {
             >
               <Markdown rehypePlugins={[rehypeSanitize]}>{block.content}</Markdown>
             </div>
+          ) : block.type === "agent" ? (
+            <AgentBlock key={idx} block={block} />
           ) : (
             <ToolBlock key={idx} block={block} />
           )

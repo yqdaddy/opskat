@@ -414,8 +414,8 @@ export function SelectSSHKeyFile() {
   return window['go']['app']['App']['SelectSSHKeyFile']();
 }
 
-export function SendAIMessage(arg1, arg2) {
-  return window['go']['app']['App']['SendAIMessage'](arg1, arg2);
+export function SendAIMessage(arg1, arg2, arg3) {
+  return window['go']['app']['App']['SendAIMessage'](arg1, arg2, arg3);
 }
 
 export function SetActiveAIProvider(arg1) {

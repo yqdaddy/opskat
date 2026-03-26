@@ -39,7 +39,7 @@ func (a *App) activateProvider(p *ai_provider_entity.AIProvider) error {
 	default: // "openai"
 		provider = ai.NewOpenAIProvider(p.Name, p.APIBase, apiKey, p.Model)
 	}
-	a.aiAgent = ai.NewAgent(provider, ai.NewAuditingExecutor(ai.NewDefaultToolExecutor(), ai.NewDefaultAuditWriter()), checker)
+	a.aiAgent = ai.NewAgent(provider, ai.NewAuditingExecutor(ai.NewDefaultToolExecutor(), ai.NewDefaultAuditWriter()), checker, ai.NewDefaultConfig())
 	return nil
 }
 
@@ -143,7 +143,7 @@ func (a *App) DeleteConversation(id int64) error {
 
 // SendAIMessage 发送 AI 消息，通过 Wails Events 流式返回
 // convID 指定目标会话，支持多会话并发发送
-func (a *App) SendAIMessage(convID int64, messages []ai.Message) error {
+func (a *App) SendAIMessage(convID int64, messages []ai.Message, aiCtx ai.AIContext) error {
 	if a.aiAgent == nil {
 		return fmt.Errorf("请先配置 AI Provider")
 	}
@@ -178,11 +178,16 @@ func (a *App) SendAIMessage(convID int64, messages []ai.Message) error {
 
 	eventName := fmt.Sprintf("ai:event:%d", convID)
 
-	// 添加系统提示
+	// 构建动态系统提示
+	lang := "en"
+	if a.lang == "zh-cn" {
+		lang = "zh-cn"
+	}
+	builder := ai.NewPromptBuilder(lang, aiCtx)
 	fullMessages := make([]ai.Message, 0, 1+len(messages))
 	fullMessages = append(fullMessages, ai.Message{
 		Role:    ai.RoleSystem,
-		Content: "You are the OpsKat AI assistant, helping users manage IT assets. You can list assets, view details, add assets, and run commands on SSH servers. Respond in the same language the user uses.",
+		Content: builder.Build(),
 	})
 	fullMessages = append(fullMessages, messages...)
 
@@ -195,6 +200,18 @@ func (a *App) SendAIMessage(convID int64, messages []ai.Message) error {
 		if a.sshPool != nil {
 			chatCtx = ai.WithSSHPool(chatCtx, a.sshPool)
 		}
+
+		// 注入 Sub Agent 依赖
+		chatCtx = ai.WithSpawnAgentDeps(chatCtx, &ai.SpawnAgentDeps{
+			Provider: a.aiAgent.GetProvider(),
+			Checker:  a.aiAgent.GetPolicyChecker(),
+			OnEvent: func(event ai.StreamEvent) {
+				wailsRuntime.EventsEmit(a.ctx, eventName, event)
+			},
+			NewExecutor: func() ai.ToolExecutor {
+				return ai.NewAuditingExecutor(ai.NewDefaultToolExecutor(), ai.NewDefaultAuditWriter())
+			},
+		})
 
 		err := a.aiAgent.Chat(chatCtx, fullMessages, func(event ai.StreamEvent) {
 			wailsRuntime.EventsEmit(a.ctx, eventName, event)

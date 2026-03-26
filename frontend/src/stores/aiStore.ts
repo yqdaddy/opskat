@@ -14,14 +14,18 @@ import { EventsOn } from "../../wailsjs/runtime/runtime";
 import i18n from "../i18n";
 import { useTabStore, registerTabCloseHook, registerTabRestoreHook, type AITabMeta, type Tab } from "./tabStore";
 
-// 内容块：文本或工具调用
+// 内容块：文本、工具调用或 Sub Agent
 export interface ContentBlock {
-  type: "text" | "tool";
+  type: "text" | "tool" | "agent";
   content: string;
   toolName?: string;
   toolInput?: string;
   status?: "running" | "completed" | "error" | "pending_confirm";
   confirmId?: string;
+  // agent 块专用
+  agentRole?: string;
+  agentTask?: string;
+  childBlocks?: ContentBlock[];
 }
 
 export interface ChatMessage {
@@ -38,6 +42,8 @@ interface StreamEventData {
   tool_input?: string;
   confirm_id?: string;
   error?: string;
+  agent_role?: string;
+  agent_task?: string;
 }
 
 interface TabState {
@@ -112,7 +118,7 @@ function convertDisplayMessages(displayMsgs: app.ConversationDisplayMessage[]): 
     role: dm.role as "user" | "assistant" | "tool",
     content: dm.content,
     blocks: (dm.blocks || []).map((b: conversation_entity.ContentBlock) => ({
-      type: b.type as "text" | "tool",
+      type: b.type as "text" | "tool" | "agent",
       content: b.content,
       toolName: b.toolName,
       toolInput: b.toolInput,
@@ -377,17 +383,18 @@ export const useAIStore = create<AIState>((set, get) => {
             break;
           }
 
-          case "tool_start": {
+          case "agent_start": {
             const updated = updateLastAssistant(msgs, (msg) => ({
               ...msg,
               blocks: [
                 ...msg.blocks,
                 {
-                  type: "tool" as const,
+                  type: "agent" as const,
                   content: "",
-                  toolName: event.tool_name || "Tool",
-                  toolInput: event.tool_input || "",
+                  agentRole: event.agent_role || "",
+                  agentTask: event.agent_task || "",
                   status: "running" as const,
+                  childBlocks: [],
                 },
               ],
             }));
@@ -395,9 +402,97 @@ export const useAIStore = create<AIState>((set, get) => {
             break;
           }
 
+          case "agent_end": {
+            const updated = updateLastAssistant(msgs, (msg) => {
+              const newBlocks = [...msg.blocks];
+              for (let i = newBlocks.length - 1; i >= 0; i--) {
+                if (newBlocks[i].type === "agent" && newBlocks[i].status === "running") {
+                  newBlocks[i] = { ...newBlocks[i], content: event.content || "", status: "completed" };
+                  break;
+                }
+              }
+              return { ...msg, blocks: newBlocks };
+            });
+            if (updated) updateTab(tabId, { messages: updated });
+            break;
+          }
+
+          case "tool_start": {
+            const updated = updateLastAssistant(msgs, (msg) => {
+              const newBlocks = [...msg.blocks];
+              const toolBlock: ContentBlock = {
+                type: "tool" as const,
+                content: "",
+                toolName: event.tool_name || "Tool",
+                toolInput: event.tool_input || "",
+                status: "running" as const,
+              };
+
+              // 如果有 running 的 agent 块，嵌套到 childBlocks
+              let agentIdx = -1;
+              for (let i = newBlocks.length - 1; i >= 0; i--) {
+                if (newBlocks[i].type === "agent" && newBlocks[i].status === "running") {
+                  agentIdx = i;
+                  break;
+                }
+              }
+              if (agentIdx !== -1) {
+                const agentBlock = { ...newBlocks[agentIdx] };
+                agentBlock.childBlocks = [...(agentBlock.childBlocks || []), toolBlock];
+                newBlocks[agentIdx] = agentBlock;
+              } else {
+                newBlocks.push(toolBlock);
+              }
+
+              return { ...msg, blocks: newBlocks };
+            });
+            if (updated) updateTab(tabId, { messages: updated });
+            break;
+          }
+
           case "tool_result": {
             const updated = updateLastAssistant(msgs, (msg) => {
               const newBlocks = [...msg.blocks];
+
+              // 先检查是否在 running 的 agent 块内
+              let agentIdx = -1;
+              for (let i = newBlocks.length - 1; i >= 0; i--) {
+                if (newBlocks[i].type === "agent" && newBlocks[i].status === "running") {
+                  agentIdx = i;
+                  break;
+                }
+              }
+              if (agentIdx !== -1 && newBlocks[agentIdx].childBlocks) {
+                const agentBlock = { ...newBlocks[agentIdx] };
+                const children = [...(agentBlock.childBlocks || [])];
+                let matchIdx = -1;
+                for (let i = children.length - 1; i >= 0; i--) {
+                  if (
+                    children[i].type === "tool" &&
+                    children[i].status === "running" &&
+                    children[i].toolName === event.tool_name
+                  ) {
+                    matchIdx = i;
+                    break;
+                  }
+                }
+                if (matchIdx === -1) {
+                  for (let i = children.length - 1; i >= 0; i--) {
+                    if (children[i].type === "tool" && children[i].status === "running") {
+                      matchIdx = i;
+                      break;
+                    }
+                  }
+                }
+                if (matchIdx !== -1) {
+                  children[matchIdx] = { ...children[matchIdx], content: event.content || "", status: "completed" };
+                  agentBlock.childBlocks = children;
+                  newBlocks[agentIdx] = agentBlock;
+                  return { ...msg, blocks: newBlocks };
+                }
+              }
+
+              // 顶层工具块匹配
               let matchIdx = -1;
               for (let i = newBlocks.length - 1; i >= 0; i--) {
                 const b = newBlocks[i];
@@ -456,6 +551,18 @@ export const useAIStore = create<AIState>((set, get) => {
               return { ...msg, blocks: newBlocks };
             });
             if (updated) updateTab(tabId, { messages: updated });
+
+            // 应用在后台时发送系统通知
+            if (document.hidden) {
+              try {
+                new Notification("OpsKat", {
+                  body: i18n.t("ai.notificationPermissionNeeded"),
+                  tag: `confirm-${event.confirm_id}`,
+                });
+              } catch {
+                // 通知权限未授予，忽略
+              }
+            }
             break;
           }
 
@@ -537,8 +644,25 @@ export const useAIStore = create<AIState>((set, get) => {
         });
       });
 
+      // 收集当前 Tab 上下文
+      const allTabs = useTabStore.getState().tabs;
+      const openTabs = allTabs
+        .filter(
+          (t): t is Tab & { meta: { assetId: number; assetName?: string } } =>
+            t.type !== "ai" && t.type !== "page" && t.meta != null && "assetId" in t.meta
+        )
+        .map(
+          (t) =>
+            new ai.TabInfo({
+              type: t.type,
+              assetId: t.meta.assetId || 0,
+              assetName: t.meta.assetName || t.label || "",
+            })
+        );
+      const aiContext = new ai.AIContext({ openTabs });
+
       try {
-        await SendAIMessage(convId!, apiMessages);
+        await SendAIMessage(convId!, apiMessages, aiContext);
       } catch {
         updateTab(tabId, { sending: false });
         cleanupListener(tabId);

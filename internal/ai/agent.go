@@ -5,12 +5,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"sync"
 	"time"
 
 	"github.com/opskat/opskat/internal/sshpool"
 
 	"github.com/cago-frame/cago/pkg/logger"
 	"go.uber.org/zap"
+	"golang.org/x/sync/errgroup"
 )
 
 // ToolExecutor 执行 tool 调用的接口
@@ -24,16 +26,32 @@ type Agent struct {
 	executor      ToolExecutor
 	tools         []Tool
 	policyChecker *CommandPolicyChecker
+	config        AgentConfig
 }
 
 // NewAgent 创建 Agent
-func NewAgent(provider Provider, executor ToolExecutor, checker *CommandPolicyChecker) *Agent {
+func NewAgent(provider Provider, executor ToolExecutor, checker *CommandPolicyChecker, config AgentConfig) *Agent {
+	tools := config.Tools
+	if tools == nil {
+		tools = AllToolDefs()
+	}
 	return &Agent{
 		provider:      provider,
 		executor:      executor,
-		tools:         ToOpenAITools(AllToolDefs()),
+		tools:         ToOpenAITools(tools),
 		policyChecker: checker,
+		config:        config,
 	}
+}
+
+// GetProvider 返回 Agent 的 Provider（供 Sub Agent 复用）
+func (a *Agent) GetProvider() Provider {
+	return a.provider
+}
+
+// GetPolicyChecker 返回 Agent 的 PolicyChecker（供 Sub Agent 复用）
+func (a *Agent) GetPolicyChecker() *CommandPolicyChecker {
+	return a.policyChecker
 }
 
 // Chat 发起对话，处理 tool 调用循环，通过回调流式返回内容
@@ -52,8 +70,8 @@ func (a *Agent) Chat(ctx context.Context, messages []Message, onEvent func(Strea
 		ctx = WithPolicyChecker(ctx, a.policyChecker)
 	}
 
-	const maxRounds = 10           // 防止无限循环
-	const maxResultLen = 32 * 1024 // 工具执行结果最大长度 32KB
+	maxRounds := a.config.effectiveMaxRounds()
+	maxResultLen := a.config.effectiveMaxResultLen()
 
 	for round := 0; round < maxRounds; round++ {
 		ch, err := a.provider.Chat(ctx, messages, a.tools)
@@ -98,20 +116,39 @@ func (a *Agent) Chat(ctx context.Context, messages []Message, onEvent func(Strea
 		}
 		messages = append(messages, assistantMsg)
 
-		for _, tc := range toolCalls {
-			result, err := a.executor.Execute(ctx, tc.Function.Name, tc.Function.Arguments)
-			if err != nil {
-				result = fmt.Sprintf("工具执行错误: %s", err.Error())
-			}
-			if len(result) > maxResultLen {
-				result = result[:2048] + fmt.Sprintf(
-					"\n\n--- 输出被截断 ---\n输出内容过长（%d 字节，超过 %d 字节限制）。请使用更精确的筛选条件、添加 | head 或 | grep 等管道命令缩小输出范围，或分段查询。",
-					len(result), maxResultLen)
-			}
+		// 并行执行工具调用
+		type toolResult struct {
+			content string
+			callID  string
+		}
+		results := make([]toolResult, len(toolCalls))
+		var mu sync.Mutex
+		g, gCtx := errgroup.WithContext(ctx)
+
+		for i, tc := range toolCalls {
+			g.Go(func() error {
+				result, execErr := a.executor.Execute(gCtx, tc.Function.Name, tc.Function.Arguments)
+				if execErr != nil {
+					result = fmt.Sprintf("工具执行错误: %s", execErr.Error())
+				}
+				if len(result) > maxResultLen {
+					result = result[:2048] + fmt.Sprintf(
+						"\n\n--- 输出被截断 ---\n输出内容过长（%d 字节，超过 %d 字节限制）。请使用更精确的筛选条件、添加 | head 或 | grep 等管道命令缩小输出范围，或分段查询。",
+						len(result), maxResultLen)
+				}
+				mu.Lock()
+				results[i] = toolResult{content: result, callID: tc.ID}
+				mu.Unlock()
+				return nil
+			})
+		}
+		_ = g.Wait()
+
+		for _, r := range results {
 			messages = append(messages, Message{
 				Role:       RoleTool,
-				Content:    result,
-				ToolCallID: tc.ID,
+				Content:    r.content,
+				ToolCallID: r.callID,
 			})
 		}
 		// 继续下一轮对话

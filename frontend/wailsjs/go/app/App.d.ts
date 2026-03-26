@@ -221,7 +221,7 @@ export function SelectImportFile():Promise<app.ImportFileInfo>;
 
 export function SelectSSHKeyFile():Promise<app.LocalSSHKeyInfo>;
 
-export function SendAIMessage(arg1:number,arg2:Array<ai.Message>):Promise<void>;
+export function SendAIMessage(arg1:number,arg2:Array<ai.Message>,arg3:ai.AIContext):Promise<void>;
 
 export function SetActiveAIProvider(arg1:number):Promise<void>;
 
