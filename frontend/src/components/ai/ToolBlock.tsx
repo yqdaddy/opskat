@@ -7,6 +7,7 @@ import {
   ChevronRight,
   Loader2,
   CheckCircle2,
+  XCircle,
   Shield,
 } from "lucide-react";
 import type { ContentBlock } from "@/stores/aiStore";
@@ -30,23 +31,27 @@ export function ToolBlock({ block }: ToolBlockProps) {
   const [expanded, setExpanded] = useState(false);
   const Icon = toolIcons[block.toolName || ""] || Terminal;
   const isRunning = block.status === "running";
+  const isError = block.status === "error";
   const hasOutput = block.content && block.content.length > 0;
 
   return (
-    <div className="my-1.5 rounded-lg border border-border/60 bg-muted/30 text-xs overflow-hidden">
-      {/* Header: 工具名 + 输入摘要 */}
+    <div
+      className={`my-1.5 rounded-lg border bg-muted/30 text-xs overflow-hidden ${
+        isRunning ? "border-primary/30" : "border-border/60"
+      }`}
+    >
       <button
-        className="flex items-center gap-1.5 w-full min-w-0 px-2.5 py-1.5 text-left hover:bg-muted/50 transition-colors"
+        className="flex items-center gap-2 w-full min-w-0 px-3 py-2 h-[34px] text-left hover:bg-muted/50 transition-colors"
         onClick={() => hasOutput && setExpanded(!expanded)}
         disabled={!hasOutput}
       >
         <ChevronRight
-          className={`h-3 w-3 shrink-0 text-muted-foreground/60 transition-transform duration-150 ${
-            expanded ? "rotate-90" : ""
+          className={`h-3 w-3 shrink-0 text-muted-foreground transition-transform duration-150 ${
+            expanded ? "rotate-90 opacity-100" : "opacity-50"
           } ${!hasOutput ? "invisible" : ""}`}
         />
         {isRunning ? (
-          <Loader2 className="h-3.5 w-3.5 shrink-0 text-blue-500 animate-spin" />
+          <Loader2 className="h-3.5 w-3.5 shrink-0 text-primary animate-spin" />
         ) : (
           <Icon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
         )}
@@ -57,15 +62,15 @@ export function ToolBlock({ block }: ToolBlockProps) {
           </code>
         )}
         <span className="ml-auto shrink-0">
-          {!isRunning && hasOutput && (
+          {isError && <XCircle className="h-3 w-3 text-destructive/70" />}
+          {!isRunning && !isError && hasOutput && (
             <CheckCircle2 className="h-3 w-3 text-green-500/70" />
           )}
         </span>
       </button>
 
-      {/* Output: 可展开的结果 */}
       {expanded && hasOutput && (
-        <div className="border-t border-border/40 px-2.5 py-1.5 max-h-48 overflow-auto">
+        <div className="border-t border-border/40 px-3 py-2 max-h-48 overflow-auto">
           <pre className="whitespace-pre-wrap break-all font-mono text-[11px] text-muted-foreground leading-relaxed">
             {block.content}
           </pre>
