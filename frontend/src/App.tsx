@@ -46,6 +46,38 @@ function App() {
     };
   }, [t]);
 
+  // 监听系统启动状态
+  useEffect(() => {
+    const cancel = EventsOn("system:status", (entries: Array<{ level: string }>) => {
+      if (!entries || entries.length === 0) return;
+      const hasError = entries.some((e) => e.level === "error");
+      const message = hasError
+        ? t("systemStatus.toastError")
+        : t("systemStatus.toastWarn");
+      const toastFn = hasError ? toast.error : toast.warning;
+      toastFn(message, {
+        action: {
+          label: t("systemStatus.showDetail"),
+          onClick: () => {
+            const tabStore = useTabStore.getState();
+            const existing = tabStore.tabs.find((tab) => tab.id === "settings");
+            if (existing) {
+              tabStore.activateTab("settings");
+            } else {
+              tabStore.openTab({
+                id: "settings",
+                type: "page",
+                label: "settings",
+                meta: { type: "page", pageId: "settings" },
+              });
+            }
+          },
+        },
+      });
+    });
+    return () => cancel();
+  }, [t]);
+
   // 双击拖拽区域最大化/还原窗口
   useEffect(() => {
     const handleDblClick = (e: MouseEvent) => {

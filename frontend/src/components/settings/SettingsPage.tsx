@@ -1,13 +1,14 @@
 import { useTranslation } from "react-i18next";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Bot, Palette, HardDrive, Import, Keyboard, MonitorDot, Info } from "lucide-react";
+import { Bot, Palette, HardDrive, Import, Keyboard, MonitorDot, Info, Activity } from "lucide-react";
 import { ShortcutSettings } from "@/components/settings/ShortcutSettings";
 import { AISettingsSection } from "@/components/settings/AISettingsSection";
 import { ImportSection } from "@/components/settings/ImportSection";
 import { BackupSection } from "@/components/settings/BackupSection";
 import { AppearanceSection, TerminalSection } from "@/components/settings/AppearanceSection";
 import { UpdateSection } from "@/components/settings/UpdateSection";
+import { SystemStatusSection } from "@/components/settings/SystemStatusSection";
 
 export function SettingsPage() {
   const { t } = useTranslation();
@@ -47,6 +48,10 @@ export function SettingsPage() {
             <TabsTrigger value="about" className="gap-1">
               <Info className="h-3.5 w-3.5" />
               {t("appUpdate.title")}
+            </TabsTrigger>
+            <TabsTrigger value="status" className="gap-1">
+              <Activity className="h-3.5 w-3.5" />
+              {t("systemStatus.title")}
             </TabsTrigger>
           </TabsList>
 
@@ -91,6 +96,11 @@ export function SettingsPage() {
           {/* About & Update */}
           <TabsContent value="about" className="space-y-4">
             <UpdateSection />
+          </TabsContent>
+
+          {/* System Status */}
+          <TabsContent value="status" className="space-y-4">
+            <SystemStatusSection />
           </TabsContent>
         </Tabs>
       </div>
