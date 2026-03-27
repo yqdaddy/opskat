@@ -1249,6 +1249,22 @@ export namespace status {
 
 export namespace update_svc {
 	
+	export class MirrorInfo {
+	    id: string;
+	    name: string;
+	    url: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new MirrorInfo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.name = source["name"];
+	        this.url = source["url"];
+	    }
+	}
 	export class UpdateInfo {
 	    hasUpdate: boolean;
 	    currentVersion: string;

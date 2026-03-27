@@ -102,8 +102,8 @@ export function DisconnectSSH(arg1) {
   return window['go']['app']['App']['DisconnectSSH'](arg1);
 }
 
-export function DownloadAndInstallUpdate() {
-  return window['go']['app']['App']['DownloadAndInstallUpdate']();
+export function DownloadAndInstallUpdate(arg1) {
+  return window['go']['app']['App']['DownloadAndInstallUpdate'](arg1);
 }
 
 export function EncryptPassword(arg1) {
@@ -162,6 +162,10 @@ export function GetAssetPassword(arg1) {
   return window['go']['app']['App']['GetAssetPassword'](arg1);
 }
 
+export function GetAvailableMirrors() {
+  return window['go']['app']['App']['GetAvailableMirrors']();
+}
+
 export function GetCredentialPublicKey(arg1) {
   return window['go']['app']['App']['GetCredentialPublicKey'](arg1);
 }
@@ -180,6 +184,10 @@ export function GetDataDir() {
 
 export function GetDefaultPolicy(arg1) {
   return window['go']['app']['App']['GetDefaultPolicy'](arg1);
+}
+
+export function GetDownloadMirror() {
+  return window['go']['app']['App']['GetDownloadMirror']();
 }
 
 export function GetGitHubToken() {
@@ -428,6 +436,10 @@ export function SendAIMessage(arg1, arg2, arg3) {
 
 export function SetActiveAIProvider(arg1) {
   return window['go']['app']['App']['SetActiveAIProvider'](arg1);
+}
+
+export function SetDownloadMirror(arg1) {
+  return window['go']['app']['App']['SetDownloadMirror'](arg1);
 }
 
 export function SetLanguage(arg1) {

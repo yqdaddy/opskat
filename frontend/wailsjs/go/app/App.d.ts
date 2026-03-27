@@ -66,7 +66,7 @@ export function DetectSkills():Promise<Array<app.SkillTarget>>;
 
 export function DisconnectSSH(arg1:string):Promise<void>;
 
-export function DownloadAndInstallUpdate():Promise<void>;
+export function DownloadAndInstallUpdate(arg1:boolean):Promise<void>;
 
 export function EncryptPassword(arg1:string):Promise<string>;
 
@@ -96,6 +96,8 @@ export function GetAsset(arg1:number):Promise<asset_entity.Asset>;
 
 export function GetAssetPassword(arg1:number):Promise<string>;
 
+export function GetAvailableMirrors():Promise<Array<update_svc.MirrorInfo>>;
+
 export function GetCredentialPublicKey(arg1:number):Promise<string>;
 
 export function GetCredentialUsage(arg1:number):Promise<Array<string>>;
@@ -105,6 +107,8 @@ export function GetCurrentConversationID():Promise<number>;
 export function GetDataDir():Promise<string>;
 
 export function GetDefaultPolicy(arg1:string):Promise<string>;
+
+export function GetDownloadMirror():Promise<string>;
 
 export function GetGitHubToken():Promise<string>;
 
@@ -229,6 +233,8 @@ export function SelectSSHKeyFile():Promise<app.LocalSSHKeyInfo>;
 export function SendAIMessage(arg1:number,arg2:Array<ai.Message>,arg3:ai.AIContext):Promise<void>;
 
 export function SetActiveAIProvider(arg1:number):Promise<void>;
+
+export function SetDownloadMirror(arg1:string):Promise<void>;
 
 export function SetLanguage(arg1:string):Promise<void>;
 
