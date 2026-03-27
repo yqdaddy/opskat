@@ -682,7 +682,16 @@
     "restartNow": "Restart Now",
     "restartLater": "Later",
     "viewRelease": "View Release",
-    "autoUpdateFound": "New version {{version}} available. Update in Settings."
+    "autoUpdateFound": "New version {{version}} available. Update in Settings.",
+    "downloadMirror": "Download Mirror",
+    "mirrorGithub": "GitHub (Direct)",
+    "mirrorCustom": "Custom",
+    "mirrorCustomPlaceholder": "Mirror URL prefix, e.g. https://ghfast.top/",
+    "checksumSkipTitle": "Checksum Verification Unavailable",
+    "checksumFetchFailed": "Unable to fetch checksum file (SHA256SUMS.txt) from GitHub. The downloaded file cannot be verified for integrity.",
+    "checksumSkipConfirm": "Continue without verification?",
+    "checksumSkipAction": "Skip & Continue",
+    "checksumSkipCancel": "Cancel"
   },
   "opsctlApproval": {
     "title": "CLI Operation Approval",
