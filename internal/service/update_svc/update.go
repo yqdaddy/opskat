@@ -4,6 +4,8 @@ import (
 	"archive/tar"
 	"archive/zip"
 	"compress/gzip"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -234,6 +236,12 @@ func DownloadAndUpdate(channel string, onProgress func(downloaded, total int64))
 		return fmt.Errorf("no release asset found for platform %s", platform)
 	}
 
+	// 获取校验信息
+	checksums, err := fetchChecksums(release.Assets)
+	if err != nil {
+		return fmt.Errorf("fetch checksums failed: %w", err)
+	}
+
 	// 下载资产
 	dlClient := &http.Client{Timeout: 30 * time.Minute}
 	dlResp, err := dlClient.Get(downloadURL)
@@ -267,9 +275,11 @@ func DownloadAndUpdate(channel string, onProgress func(downloaded, total int64))
 		}
 	}()
 
-	var reader io.Reader = dlResp.Body
+	// 边下载边计算 SHA256
+	hasher := sha256.New()
+	reader := io.TeeReader(dlResp.Body, hasher)
 	if onProgress != nil {
-		reader = &progressReader{r: dlResp.Body, total: assetSize, onProgress: onProgress}
+		reader = &progressReader{r: reader, total: assetSize, onProgress: onProgress}
 	}
 
 	if _, err := io.Copy(tmpFile, reader); err != nil {
@@ -280,6 +290,19 @@ func DownloadAndUpdate(channel string, onProgress func(downloaded, total int64))
 	}
 	if err := tmpFile.Close(); err != nil {
 		logger.Default().Warn("close temp file", zap.Error(err))
+	}
+
+	// 校验 SHA256
+	if checksums != nil {
+		actualHash := hex.EncodeToString(hasher.Sum(nil))
+		expectedHash, ok := checksums[assetName]
+		if !ok {
+			return fmt.Errorf("SHA256SUMS.txt 中未找到 %s 的校验值，请前往 %s 手动下载", assetName, release.HTMLURL)
+		}
+		if !strings.EqualFold(actualHash, expectedHash) {
+			return fmt.Errorf("文件校验失败: %s 的 SHA256 不匹配 (期望: %s, 实际: %s)，文件可能已损坏或被篡改，请前往 %s 手动下载",
+				assetName, expectedHash, actualHash, release.HTMLURL)
+		}
 	}
 
 	// 获取当前可执行文件路径
