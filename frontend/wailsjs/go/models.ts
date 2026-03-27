@@ -140,6 +140,7 @@ export namespace ai {
 	export class Message {
 	    role: string;
 	    content: string;
+	    thinking?: string;
 	    tool_calls?: ToolCall[];
 	    tool_call_id?: string;
 	
@@ -151,6 +152,7 @@ export namespace ai {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.role = source["role"];
 	        this.content = source["content"];
+	        this.thinking = source["thinking"];
 	        this.tool_calls = this.convertValues(source["tool_calls"], ToolCall);
 	        this.tool_call_id = source["tool_call_id"];
 	    }

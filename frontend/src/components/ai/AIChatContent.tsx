@@ -1,17 +1,32 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, memo, useCallback } from "react";
 import { useIMEComposing } from "@/hooks/useIMEComposing";
-import { Loader2, CornerDownLeft } from "lucide-react";
+import { Loader2, CornerDownLeft, Square, RefreshCw, X, Trash2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import Markdown from "react-markdown";
 import rehypeSanitize from "rehype-sanitize";
 import remarkGfm from "remark-gfm";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { useAIStore, useAISendOnEnter, type ChatMessage, type ContentBlock } from "@/stores/aiStore";
 import { ToolBlock } from "@/components/ai/ToolBlock";
+import { ThinkingBlock } from "@/components/ai/ThinkingBlock";
 import { AgentBlock } from "@/components/ai/AgentBlock";
 import { ApprovalBlock } from "@/components/approval/ApprovalBlock";
 import { AISetupWizard } from "@/components/ai/AISetupWizard";
+
+// 常量化 Markdown 插件数组，避免每次渲染创建新引用导致 Markdown 重解析
+const mdRemarkPlugins = [remarkGfm];
+const mdRehypePlugins = [rehypeSanitize];
 
 interface AIChatContentProps {
   tabId: string;
@@ -45,14 +60,16 @@ function splitBlocksByApproval(blocks: ContentBlock[]): Array<{ type: "bubble" |
 
 export function AIChatContent({ tabId }: AIChatContentProps) {
   const { t } = useTranslation();
-  const { configured, sendToTab } = useAIStore();
+  const { configured, sendToTab, stopGeneration, regenerate, removeFromQueue, clearQueue } = useAIStore();
   const tabState = useAIStore((s) => s.tabStates[tabId]) || {
     messages: [],
     sending: false,
+    pendingQueue: [],
   };
-  const { messages, sending } = tabState;
+  const { messages, sending, pendingQueue } = tabState;
 
   const [input, setInput] = useState("");
+  const [regenerateTarget, setRegenerateTarget] = useState<number | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const { isComposing, onCompositionStart, onCompositionEnd } = useIMEComposing();
@@ -67,9 +84,24 @@ export function AIChatContent({ tabId }: AIChatContentProps) {
 
   const handleSend = () => {
     const text = input.trim();
-    if (!text || sending) return;
+    if (!text) return;
     setInput("");
     sendToTab(tabId, text);
+  };
+
+  const handleStop = () => {
+    stopGeneration(tabId);
+  };
+
+  const handleRegenerate = useCallback((index: number) => {
+    setRegenerateTarget(index);
+  }, []);
+
+  const confirmRegenerate = () => {
+    if (regenerateTarget !== null) {
+      regenerate(tabId, regenerateTarget);
+      setRegenerateTarget(null);
+    }
   };
 
   const sendOnEnter = useAISendOnEnter();
@@ -103,12 +135,53 @@ export function AIChatContent({ tabId }: AIChatContentProps) {
           )}
           {messages.map((msg, i) => (
             <div key={i} className="text-sm">
-              {msg.role === "user" ? <UserMessage msg={msg} /> : <AssistantMessage msg={msg} />}
+              {msg.role === "user" ? (
+                <UserMessage msg={msg} />
+              ) : (
+                <AssistantMessage msg={msg} index={i} sending={sending} onRegenerate={handleRegenerate} />
+              )}
             </div>
           ))}
           <div ref={bottomRef} />
         </div>
       </ScrollArea>
+
+      {/* Pending Queue */}
+      {pendingQueue.length > 0 && (
+        <div className="border-t px-3 py-2 bg-muted/30">
+          <div className="max-w-3xl mx-auto">
+            <div className="flex items-center justify-between mb-1.5">
+              <span className="text-xs text-muted-foreground">
+                {t("ai.pendingMessages", "等待发送")} ({pendingQueue.length})
+              </span>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-5 px-1.5 text-xs text-muted-foreground hover:text-destructive"
+                onClick={() => clearQueue(tabId)}
+              >
+                <Trash2 className="h-3 w-3 mr-1" />
+                {t("ai.clearQueue", "清空")}
+              </Button>
+            </div>
+            <div className="space-y-1">
+              {pendingQueue.map((text, i) => (
+                <div key={i} className="flex items-center gap-1.5 text-xs bg-background rounded px-2 py-1.5 border">
+                  <span className="truncate flex-1 text-muted-foreground">
+                    {text.length > 50 ? text.slice(0, 50) + "…" : text}
+                  </span>
+                  <button
+                    className="shrink-0 text-muted-foreground/50 hover:text-destructive transition-colors"
+                    onClick={() => removeFromQueue(tabId, i)}
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Input */}
       <div className="border-t p-3">
@@ -132,27 +205,45 @@ export function AIChatContent({ tabId }: AIChatContentProps) {
                   ? `Enter ${t("ai.sendShortcutHint")}`
                   : `${/mac/i.test(navigator.userAgent) ? "⌘+Enter" : "Ctrl+Enter"} ${t("ai.sendShortcutHint")}`}
               </span>
-              <Button
-                size="icon"
-                className="h-7 w-7 shrink-0 rounded-lg"
-                onClick={handleSend}
-                disabled={sending || !input.trim()}
-              >
-                {sending ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                ) : (
+              {sending ? (
+                <Button size="icon" variant="destructive" className="h-7 w-7 shrink-0 rounded-lg" onClick={handleStop}>
+                  <Square className="h-3 w-3" />
+                </Button>
+              ) : (
+                <Button
+                  size="icon"
+                  className="h-7 w-7 shrink-0 rounded-lg"
+                  onClick={handleSend}
+                  disabled={!input.trim()}
+                >
                   <CornerDownLeft className="h-3.5 w-3.5" />
-                )}
-              </Button>
+                </Button>
+              )}
             </div>
           </div>
         </div>
       </div>
+
+      {/* Regenerate confirmation dialog */}
+      <AlertDialog open={regenerateTarget !== null} onOpenChange={(open) => !open && setRegenerateTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t("ai.regenerateTitle", "重新生成")}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {t("ai.regenerateConfirm", "重新生成将删除此消息及之后的所有对话记录，确定要继续吗？")}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t("common.cancel", "取消")}</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmRegenerate}>{t("common.confirm", "确定")}</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
 
-function UserMessage({ msg }: { msg: ChatMessage }) {
+const UserMessage = memo(function UserMessage({ msg }: { msg: ChatMessage }) {
   return (
     <div className="flex flex-col items-end gap-1.5">
       <span className="text-xs font-semibold text-muted-foreground tracking-wide">You</span>
@@ -161,9 +252,20 @@ function UserMessage({ msg }: { msg: ChatMessage }) {
       </div>
     </div>
   );
-}
+});
 
-function AssistantMessage({ msg }: { msg: ChatMessage }) {
+const AssistantMessage = memo(function AssistantMessage({
+  msg,
+  index,
+  sending,
+  onRegenerate,
+}: {
+  msg: ChatMessage;
+  index: number;
+  sending: boolean;
+  onRegenerate: (index: number) => void;
+}) {
+  const { t } = useTranslation();
   const hasBlocks = msg.blocks && msg.blocks.length > 0;
   const isEmpty = !hasBlocks && msg.content === "";
 
@@ -191,10 +293,12 @@ function AssistantMessage({ msg }: { msg: ChatMessage }) {
     );
   }
 
+  const showRegenerate = !sending && !msg.streaming;
+
   if (hasBlocks) {
     const segments = splitBlocksByApproval(msg.blocks);
     return (
-      <div className="flex flex-col items-start gap-1.5">
+      <div className="flex flex-col items-start gap-1.5 group/assistant">
         <span className="text-xs font-semibold text-primary tracking-wide">Assistant</span>
         {segments.map((seg, si) =>
           seg.type === "approval" ? (
@@ -205,24 +309,48 @@ function AssistantMessage({ msg }: { msg: ChatMessage }) {
             <BubbleSegment key={si} blocks={seg.blocks} streaming={msg.streaming && si === segments.length - 1} />
           )
         )}
+        {showRegenerate && (
+          <button
+            className="opacity-0 group-hover/assistant:opacity-100 transition-opacity text-muted-foreground/50 hover:text-primary"
+            onClick={() => onRegenerate(index)}
+            title={t("ai.regenerate", "重新生成")}
+          >
+            <RefreshCw className="h-3.5 w-3.5" />
+          </button>
+        )}
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col items-start gap-1.5">
+    <div className="flex flex-col items-start gap-1.5 group/assistant">
       <span className="text-xs font-semibold text-primary tracking-wide">Assistant</span>
       <div className="rounded-xl rounded-bl-sm bg-muted px-3.5 py-2.5 max-w-[95%] min-w-0 overflow-hidden break-words prose prose-sm dark:prose-invert max-w-none prose-p:my-1 prose-pre:my-1 prose-pre:overflow-x-auto shadow-sm">
-        <Markdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeSanitize]}>
+        <Markdown remarkPlugins={mdRemarkPlugins} rehypePlugins={mdRehypePlugins}>
           {msg.content}
         </Markdown>
         {msg.streaming && <Loader2 className="h-3 w-3 animate-spin inline-block ml-1" />}
       </div>
+      {showRegenerate && (
+        <button
+          className="opacity-0 group-hover/assistant:opacity-100 transition-opacity text-muted-foreground/50 hover:text-primary"
+          onClick={() => onRegenerate(index)}
+          title={t("ai.regenerate", "重新生成")}
+        >
+          <RefreshCw className="h-3.5 w-3.5" />
+        </button>
+      )}
     </div>
   );
-}
+});
 
-function BubbleSegment({ blocks, streaming }: { blocks: ContentBlock[]; streaming?: boolean }) {
+const BubbleSegment = memo(function BubbleSegment({
+  blocks,
+  streaming,
+}: {
+  blocks: ContentBlock[];
+  streaming?: boolean;
+}) {
   return (
     <div className="rounded-xl rounded-bl-sm bg-muted px-3.5 py-3 max-w-[95%] min-w-0 overflow-hidden shadow-sm space-y-2">
       {blocks.map((block, idx) =>
@@ -231,10 +359,12 @@ function BubbleSegment({ blocks, streaming }: { blocks: ContentBlock[]; streamin
             key={idx}
             className="prose prose-sm dark:prose-invert max-w-none prose-p:my-1 prose-pre:my-1 overflow-x-auto break-words"
           >
-            <Markdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeSanitize]}>
+            <Markdown remarkPlugins={mdRemarkPlugins} rehypePlugins={mdRehypePlugins}>
               {block.content}
             </Markdown>
           </div>
+        ) : block.type === "thinking" ? (
+          <ThinkingBlock key={idx} block={block} />
         ) : block.type === "agent" ? (
           <AgentBlock key={idx} block={block} />
         ) : (
@@ -244,4 +374,4 @@ function BubbleSegment({ blocks, streaming }: { blocks: ContentBlock[]; streamin
       {streaming && <Loader2 className="h-3 w-3 animate-spin inline-block ml-1 mb-1" />}
     </div>
   );
-}
+});

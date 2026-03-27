@@ -119,7 +119,7 @@ func handleSpawnAgent(ctx context.Context, args map[string]any) (string, error) 
 		default:
 			deps.OnEvent(event)
 		}
-	})
+	}, nil)
 
 	// 通知前端 Sub Agent 结束
 	summary := resultContent

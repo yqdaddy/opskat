@@ -139,6 +139,12 @@ func (a *App) switchToConversation(conv *conversation_entity.Conversation) {
 
 // DeleteConversation 删除会话
 func (a *App) DeleteConversation(id int64) error {
+	// 先停止正在运行的生成
+	if v, ok := a.runners.Load(id); ok {
+		v.(*ai.ConversationRunner).Stop()
+		a.runners.Delete(id)
+	}
+
 	err := conversation_svc.Conversation().Delete(a.langCtx(), id)
 	if err != nil {
 		return err
@@ -199,46 +205,71 @@ func (a *App) SendAIMessage(convID int64, messages []ai.Message, aiCtx ai.AICont
 	})
 	fullMessages = append(fullMessages, messages...)
 
-	go func() {
-		// 注入审计上下文
-		chatCtx := ai.WithAuditSource(a.ctx, "ai")
-		chatCtx = ai.WithConversationID(chatCtx, convID)
-		chatCtx = ai.WithSessionID(chatCtx, fmt.Sprintf("conv_%d", convID))
-		// 注入 SSH 连接池，供 Redis/Database SSH 隧道使用
-		if a.sshPool != nil {
-			chatCtx = ai.WithSSHPool(chatCtx, a.sshPool)
-		}
+	// 注入审计上下文
+	chatCtx := ai.WithAuditSource(a.ctx, "ai")
+	chatCtx = ai.WithConversationID(chatCtx, convID)
+	chatCtx = ai.WithSessionID(chatCtx, fmt.Sprintf("conv_%d", convID))
+	if a.sshPool != nil {
+		chatCtx = ai.WithSSHPool(chatCtx, a.sshPool)
+	}
 
-		// 注入 Sub Agent 依赖
-		chatCtx = ai.WithSpawnAgentDeps(chatCtx, &ai.SpawnAgentDeps{
-			Provider: a.aiAgent.GetProvider(),
-			Checker:  a.aiAgent.GetPolicyChecker(),
-			OnEvent: func(event ai.StreamEvent) {
-				wailsRuntime.EventsEmit(a.ctx, eventName, event)
-			},
-			NewExecutor: func() ai.ToolExecutor {
-				return ai.NewAuditingExecutor(ai.NewDefaultToolExecutor(), ai.NewDefaultAuditWriter())
-			},
-		})
-
-		err := a.aiAgent.Chat(chatCtx, fullMessages, func(event ai.StreamEvent) {
+	// 注入 Sub Agent 依赖
+	chatCtx = ai.WithSpawnAgentDeps(chatCtx, &ai.SpawnAgentDeps{
+		Provider: a.aiAgent.GetProvider(),
+		Checker:  a.aiAgent.GetPolicyChecker(),
+		OnEvent: func(event ai.StreamEvent) {
 			wailsRuntime.EventsEmit(a.ctx, eventName, event)
-		})
-		if err != nil {
-			wailsRuntime.EventsEmit(a.ctx, eventName, ai.StreamEvent{
-				Type:  "error",
-				Error: err.Error(),
-			})
-		}
+		},
+		NewExecutor: func() ai.ToolExecutor {
+			return ai.NewAuditingExecutor(ai.NewDefaultToolExecutor(), ai.NewDefaultAuditWriter())
+		},
+	})
 
-		// 更新会话时间
-		if conv, err := conversation_svc.Conversation().Get(a.ctx, convID); err == nil {
-			if err := conversation_svc.Conversation().Update(a.ctx, conv); err != nil {
-				logger.Default().Warn("update conversation time", zap.Error(err))
+	onEvent := func(event ai.StreamEvent) {
+		wailsRuntime.EventsEmit(a.ctx, eventName, event)
+
+		// done/stopped 时更新会话时间
+		if event.Type == "done" || event.Type == "stopped" {
+			if conv, err := conversation_svc.Conversation().Get(a.ctx, convID); err == nil {
+				if err := conversation_svc.Conversation().Update(a.ctx, conv); err != nil {
+					logger.Default().Warn("update conversation time", zap.Error(err))
+				}
 			}
 		}
-	}()
+	}
 
+	runner := a.getOrCreateRunner(convID)
+	return runner.Start(chatCtx, fullMessages, onEvent)
+}
+
+func (a *App) getOrCreateRunner(convID int64) *ai.ConversationRunner {
+	v, _ := a.runners.LoadOrStore(convID, ai.NewConversationRunner(a.aiAgent))
+	return v.(*ai.ConversationRunner)
+}
+
+// QueueAIMessage 在生成过程中追加用户消息到队列，
+// 会在下一次工具调用结束后被注入到对话上下文
+func (a *App) QueueAIMessage(convID int64, content string) error {
+	v, ok := a.runners.Load(convID)
+	if !ok {
+		return fmt.Errorf("会话 %d 没有正在运行的生成", convID)
+	}
+	runner := v.(*ai.ConversationRunner)
+	runner.QueueMessage(ai.Message{
+		Role:    ai.RoleUser,
+		Content: content,
+	})
+	return nil
+}
+
+// StopAIGeneration 停止指定会话的 AI 生成
+func (a *App) StopAIGeneration(convID int64) error {
+	v, ok := a.runners.Load(convID)
+	if !ok {
+		return nil
+	}
+	runner := v.(*ai.ConversationRunner)
+	runner.Stop()
 	return nil
 }
 

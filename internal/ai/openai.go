@@ -50,8 +50,9 @@ type openAIRequest struct {
 type openAIStreamChunk struct {
 	Choices []struct {
 		Delta struct {
-			Content   string `json:"content"`
-			ToolCalls []struct {
+			Content          string `json:"content"`
+			ReasoningContent string `json:"reasoning_content"`
+			ToolCalls        []struct {
 				Index    int    `json:"index"`
 				ID       string `json:"id"`
 				Function struct {
@@ -101,7 +102,11 @@ func (p *OpenAIProvider) Chat(ctx context.Context, messages []Message, tools []T
 		if readErr != nil {
 			logger.Default().Warn("read error response body", zap.Error(readErr))
 		}
-		return nil, fmt.Errorf("API error %d: %s", resp.StatusCode, string(errBody))
+		return nil, &ProviderError{
+			Err:        fmt.Errorf("API error %d: %s", resp.StatusCode, string(errBody)),
+			RetryAfter: resp.Header.Get("Retry-After"),
+			StatusCode: resp.StatusCode,
+		}
 	}
 
 	ch := make(chan StreamEvent, 32)
@@ -117,8 +122,8 @@ func (p *OpenAIProvider) readStream(ctx context.Context, body io.ReadCloser, ch 
 		}
 	}()
 
-	// 累积 tool calls（流式中 tool_calls 是分片的）
 	toolCallMap := make(map[int]*ToolCall)
+	thinkingActive := false
 
 	scanner := bufio.NewScanner(body)
 	for scanner.Scan() {
@@ -148,8 +153,20 @@ func (p *OpenAIProvider) readStream(ctx context.Context, body io.ReadCloser, ch 
 		}
 		delta := chunk.Choices[0].Delta
 
-		// 文本内容
+		// 思考/推理内容（DeepSeek 等兼容 API）
+		if delta.ReasoningContent != "" {
+			if !thinkingActive {
+				thinkingActive = true
+			}
+			ch <- StreamEvent{Type: "thinking", Content: delta.ReasoningContent}
+		}
+
+		// 文本内容 — 如果之前在思考，先发 thinking_done
 		if delta.Content != "" {
+			if thinkingActive {
+				thinkingActive = false
+				ch <- StreamEvent{Type: "thinking_done"}
+			}
 			ch <- StreamEvent{Type: "content", Content: delta.Content}
 		}
 
@@ -172,6 +189,10 @@ func (p *OpenAIProvider) readStream(ctx context.Context, body io.ReadCloser, ch 
 
 		// 完成时发送累积的 tool calls
 		if chunk.Choices[0].FinishReason != nil && *chunk.Choices[0].FinishReason == "tool_calls" {
+			if thinkingActive {
+				thinkingActive = false
+				ch <- StreamEvent{Type: "thinking_done"}
+			}
 			var calls []ToolCall
 			for i := 0; i < len(toolCallMap); i++ {
 				if tc, ok := toolCallMap[i]; ok {
@@ -184,6 +205,11 @@ func (p *OpenAIProvider) readStream(ctx context.Context, body io.ReadCloser, ch 
 		}
 	}
 
+	// 流结束时如果仍在思考，发 thinking_done
+	if thinkingActive {
+		ch <- StreamEvent{Type: "thinking_done"}
+	}
+
 	// 如果 scanner 结束时还有未发送的 tool calls
 	if len(toolCallMap) > 0 {
 		var calls []ToolCall
@@ -193,7 +219,6 @@ func (p *OpenAIProvider) readStream(ctx context.Context, body io.ReadCloser, ch 
 			}
 		}
 		if len(calls) > 0 {
-			// 检查是否已经发过了
 			ch <- StreamEvent{Type: "tool_call", ToolCalls: calls}
 		}
 	}

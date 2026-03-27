@@ -513,7 +513,17 @@
     "batchAutoAllowed": "auto-allowed",
     "batchNeedConfirm": "commands need confirmation",
     "batchAllowAll": "Allow All",
-    "notificationPermissionNeeded": "Permission confirmation needed"
+    "notificationPermissionNeeded": "Permission confirmation needed",
+    "thinking": "Thinking...",
+    "thinkingProcess": "Thinking process",
+    "chars": "chars",
+    "pendingMessages": "Pending messages",
+    "clearQueue": "Clear",
+    "regenerate": "Regenerate",
+    "regenerateTitle": "Regenerate",
+    "regenerateConfirm": "Regenerating will delete this message and all messages after it. Are you sure?",
+    "retrying": "Retrying",
+    "newConversation": "New conversation"
   },
   "shortcut": {
     "title": "Shortcuts",

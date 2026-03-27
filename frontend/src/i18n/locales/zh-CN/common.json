@@ -513,7 +513,17 @@
     "batchAutoAllowed": "已自动放行",
     "batchNeedConfirm": "条命令需要确认",
     "batchAllowAll": "全部允许",
-    "notificationPermissionNeeded": "有权限确认需要处理"
+    "notificationPermissionNeeded": "有权限确认需要处理",
+    "thinking": "思考中...",
+    "thinkingProcess": "思考过程",
+    "chars": "字",
+    "pendingMessages": "等待发送",
+    "clearQueue": "清空",
+    "regenerate": "重新生成",
+    "regenerateTitle": "重新生成",
+    "regenerateConfirm": "重新生成将删除此消息及之后的所有对话记录，确定要继续吗？",
+    "retrying": "重试中",
+    "newConversation": "新对话"
   },
   "shortcut": {
     "title": "快捷键",

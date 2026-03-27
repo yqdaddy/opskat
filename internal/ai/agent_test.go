@@ -70,24 +70,19 @@ func TestAgent_SimpleChat(t *testing.T) {
 			{Role: RoleUser, Content: "你好"},
 		}, func(e StreamEvent) {
 			events = append(events, e)
-		})
+		}, nil)
 
 		assert.NoError(t, err)
 		assert.Len(t, executor.calls, 0) // 没有 tool 调用
 
-		// 应有 content + done 事件
+		// 应有 content 事件（done 由 ConversationRunner 发出，不在 Chat 中）
 		contentEvents := 0
-		doneEvents := 0
 		for _, e := range events {
 			if e.Type == "content" {
 				contentEvents++
 			}
-			if e.Type == "done" {
-				doneEvents++
-			}
 		}
 		assert.Equal(t, 2, contentEvents)
-		assert.Equal(t, 1, doneEvents)
 	})
 }
 
@@ -163,7 +158,7 @@ func TestAgent_ToolCallMessageIncludesType(t *testing.T) {
 
 		err := agent.Chat(context.Background(), []Message{
 			{Role: RoleUser, Content: "test"},
-		}, func(e StreamEvent) {})
+		}, func(e StreamEvent) {}, nil)
 
 		assert.NoError(t, err)
 		// 第二轮调用时 messages 应包含 assistant 的 tool_calls
@@ -226,7 +221,7 @@ func TestAgent_ToolCallLoop(t *testing.T) {
 			{Role: RoleUser, Content: "列出所有SSH服务器"},
 		}, func(e StreamEvent) {
 			events = append(events, e)
-		})
+		}, nil)
 
 		assert.NoError(t, err)
 		// executor 应被调用一次

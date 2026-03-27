@@ -91,7 +91,11 @@ func compressMessages(ctx context.Context, provider Provider, messages []Message
 		Role:    RoleAssistant,
 		Content: "Understood, I have the context from our previous conversation. Let's continue.",
 	})
-	result = append(result, recentMsgs...)
+	for _, msg := range recentMsgs {
+		stripped := msg
+		stripped.Thinking = "" // 压缩时丢弃思考内容，节省 token
+		result = append(result, stripped)
+	}
 	return result
 }
 

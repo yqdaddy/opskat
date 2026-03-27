@@ -16,6 +16,7 @@ const (
 type Message struct {
 	Role       Role       `json:"role"`
 	Content    string     `json:"content"`
+	Thinking   string     `json:"thinking,omitempty"`
 	ToolCalls  []ToolCall `json:"tool_calls,omitempty"`
 	ToolCallID string     `json:"tool_call_id,omitempty"` // role=tool 时标识调用
 }
@@ -45,7 +46,7 @@ type ToolFunction struct {
 
 // StreamEvent 流式响应事件
 type StreamEvent struct {
-	Type      string     `json:"type"`                 // "content" | "tool_start" | "tool_result" | "tool_call" | "approval_request" | "approval_result" | "agent_start" | "agent_end" | "done" | "error"
+	Type      string     `json:"type"`                 // "content" | "tool_start" | "tool_result" | "tool_call" | "approval_request" | "approval_result" | "agent_start" | "agent_end" | "done" | "error" | "thinking" | "thinking_done" | "stopped" | "retry"
 	Content   string     `json:"content,omitempty"`    // type=content/tool_result/approval_result/agent_end 时的文本
 	ToolName  string     `json:"tool_name,omitempty"`  // type=tool_start/tool_result 时的工具名
 	ToolInput string     `json:"tool_input,omitempty"` // type=tool_start 时的输入摘要
@@ -65,6 +66,21 @@ type StreamEvent struct {
 type PermissionResponse struct {
 	Behavior string `json:"behavior"` // "allow" | "deny"
 	Message  string `json:"message"`  // deny 原因
+}
+
+// ProviderError wraps API errors with retry metadata
+type ProviderError struct {
+	Err        error
+	RetryAfter string // from HTTP Retry-After header
+	StatusCode int
+}
+
+func (e *ProviderError) Error() string {
+	return e.Err.Error()
+}
+
+func (e *ProviderError) Unwrap() error {
+	return e.Err
 }
 
 // Provider AI 服务提供者接口

@@ -52,6 +52,12 @@ type anthropicRequest struct {
 	Tools     []anthropicTool        `json:"tools,omitempty"`
 	MaxTokens int                    `json:"max_tokens"`
 	Stream    bool                   `json:"stream"`
+	Thinking  *anthropicThinking     `json:"thinking,omitempty"`
+}
+
+type anthropicThinking struct {
+	Type         string `json:"type"`          // "enabled"
+	BudgetTokens int    `json:"budget_tokens"`
 }
 
 type anthropicSystemBlock struct {
@@ -101,8 +107,9 @@ type anthropicBlockStart struct {
 }
 
 type anthropicDelta struct {
-	Type        string `json:"type"` // "text_delta" | "input_json_delta"
+	Type        string `json:"type"` // "text_delta" | "input_json_delta" | "thinking_delta"
 	Text        string `json:"text,omitempty"`
+	Thinking    string `json:"thinking,omitempty"`
 	PartialJSON string `json:"partial_json,omitempty"`
 }
 
@@ -143,6 +150,10 @@ func (p *AnthropicProvider) Chat(ctx context.Context, messages []Message, tools 
 		Tools:     anthropicTools,
 		MaxTokens: p.maxOutputTokens,
 		Stream:    true,
+		Thinking: &anthropicThinking{
+			Type:         "enabled",
+			BudgetTokens: min(p.maxOutputTokens/2, 8000),
+		},
 	}
 
 	body, err := json.Marshal(reqBody)
@@ -172,7 +183,11 @@ func (p *AnthropicProvider) Chat(ctx context.Context, messages []Message, tools 
 		if readErr != nil {
 			logger.Default().Warn("read error response body", zap.Error(readErr))
 		}
-		return nil, fmt.Errorf("API error %d: %s", resp.StatusCode, string(errBody))
+		return nil, &ProviderError{
+			Err:        fmt.Errorf("API error %d: %s", resp.StatusCode, string(errBody)),
+			RetryAfter: resp.Header.Get("Retry-After"),
+			StatusCode: resp.StatusCode,
+		}
 	}
 
 	ch := make(chan StreamEvent, 32)
@@ -198,8 +213,14 @@ func (p *AnthropicProvider) convertMessages(messages []Message) (string, []anthr
 			})
 
 		case RoleAssistant:
-			if len(msg.ToolCalls) > 0 {
+			if len(msg.ToolCalls) > 0 || msg.Thinking != "" {
 				var blocks []anthropicContentBlock
+				if msg.Thinking != "" {
+					blocks = append(blocks, anthropicContentBlock{
+						Type: "thinking",
+						Text: msg.Thinking,
+					})
+				}
 				if msg.Content != "" {
 					blocks = append(blocks, anthropicContentBlock{
 						Type: "text",
@@ -207,7 +228,6 @@ func (p *AnthropicProvider) convertMessages(messages []Message) (string, []anthr
 					})
 				}
 				for _, tc := range msg.ToolCalls {
-					// 解析 arguments JSON 为 interface{} 供序列化
 					var input interface{}
 					if err := json.Unmarshal([]byte(tc.Function.Arguments), &input); err != nil {
 						input = tc.Function.Arguments
@@ -328,6 +348,10 @@ func (p *AnthropicProvider) readStream(ctx context.Context, body io.ReadCloser, 
 				if event.Delta.Text != "" {
 					ch <- StreamEvent{Type: "content", Content: event.Delta.Text}
 				}
+			case "thinking_delta":
+				if event.Delta.Thinking != "" {
+					ch <- StreamEvent{Type: "thinking", Content: event.Delta.Thinking}
+				}
 			case "input_json_delta":
 				bs.inputJSON.WriteString(event.Delta.PartialJSON)
 			}
@@ -342,6 +366,8 @@ func (p *AnthropicProvider) readStream(ctx context.Context, body io.ReadCloser, 
 				tc.Function.Name = bs.toolName
 				tc.Function.Arguments = bs.inputJSON.String()
 				ch <- StreamEvent{Type: "tool_call", ToolCalls: []ToolCall{tc}}
+			} else if bs.blockType == "thinking" {
+				ch <- StreamEvent{Type: "thinking_done"}
 			}
 			delete(blocks, event.Index)
 

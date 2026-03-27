@@ -184,6 +184,8 @@ export function PreviewSSHConfig():Promise<import_svc.PreviewResult>;
 
 export function PreviewTabbyConfig():Promise<import_svc.PreviewResult>;
 
+export function QueueAIMessage(arg1:number,arg2:string):Promise<void>;
+
 export function ResizeSSH(arg1:string,arg2:number,arg3:number):Promise<void>;
 
 export function RespondAIApproval(arg1:string,arg2:ai.ApprovalResponse):Promise<void>;
@@ -235,6 +237,8 @@ export function SplitSSH(arg1:string,arg2:number,arg3:number):Promise<string>;
 export function StartForwardConfig(arg1:number):Promise<void>;
 
 export function StartGitHubDeviceFlow():Promise<backup_svc.DeviceFlowInfo>;
+
+export function StopAIGeneration(arg1:number):Promise<void>;
 
 export function StopForwardConfig(arg1:number):Promise<void>;
 

@@ -55,7 +55,8 @@ func (a *Agent) GetPolicyChecker() *CommandPolicyChecker {
 }
 
 // Chat 发起对话，处理 tool 调用循环，通过回调流式返回内容
-func (a *Agent) Chat(ctx context.Context, messages []Message, onEvent func(StreamEvent)) error {
+// getPendingMessages 可选，用于在工具调用后、下一轮 LLM 调用前注入排队的用户消息
+func (a *Agent) Chat(ctx context.Context, messages []Message, onEvent func(StreamEvent), getPendingMessages func() []Message) error {
 	// 每次 Chat 创建独立 executor，结束后关闭其持有的资源（如缓存的 SSH 连接）
 	executor := a.newExecutor()
 	if closer, ok := executor.(io.Closer); ok {
@@ -90,6 +91,7 @@ func (a *Agent) Chat(ctx context.Context, messages []Message, onEvent func(Strea
 		}
 
 		var contentBuf string
+		var thinkingBuf string
 		var toolCalls []ToolCall
 		hasToolCall := false
 
@@ -97,6 +99,11 @@ func (a *Agent) Chat(ctx context.Context, messages []Message, onEvent func(Strea
 			switch event.Type {
 			case "content":
 				contentBuf += event.Content
+				onEvent(event)
+			case "thinking":
+				thinkingBuf += event.Content
+				onEvent(event)
+			case "thinking_done":
 				onEvent(event)
 			case "tool_start", "tool_result", "approval_request", "approval_result":
 				onEvent(event)
@@ -112,16 +119,16 @@ func (a *Agent) Chat(ctx context.Context, messages []Message, onEvent func(Strea
 			}
 		}
 
-		// 没有 tool 调用，对话结束
+		// 没有 tool 调用，对话结束（由 runner 发 done）
 		if !hasToolCall {
-			onEvent(StreamEvent{Type: "done"})
 			return nil
 		}
 
-		// 将 assistant 的回复（含 tool_calls）加入消息
+		// 将 assistant 的回复（含 thinking + tool_calls）加入消息
 		assistantMsg := Message{
 			Role:      RoleAssistant,
 			Content:   contentBuf,
+			Thinking:  thinkingBuf,
 			ToolCalls: toolCalls,
 		}
 		messages = append(messages, assistantMsg)
@@ -176,11 +183,20 @@ func (a *Agent) Chat(ctx context.Context, messages []Message, onEvent func(Strea
 				ToolCallID: r.callID,
 			})
 		}
+
+		// 工具执行完毕后，检查排队的用户消息并注入
+		if getPendingMessages != nil {
+			if pending := getPendingMessages(); len(pending) > 0 {
+				for _, msg := range pending {
+					onEvent(StreamEvent{Type: "queue_consumed", Content: msg.Content})
+					messages = append(messages, msg)
+				}
+			}
+		}
 		// 继续下一轮对话
 	}
 
-	onEvent(StreamEvent{Type: "done"})
-	return nil
+	return fmt.Errorf("max rounds (%d) reached", maxRounds)
 }
 
 // DefaultToolExecutor 默认工具执行器，通过统一注册表调度，缓存 SSH 连接供同一次 Chat 复用

@@ -105,7 +105,7 @@ describe("aiStore", () => {
       expect(tabId).toMatch(/^ai-new-/);
       expect(useTabStore.getState().tabs).toHaveLength(1);
       expect(useTabStore.getState().tabs[0].type).toBe("ai");
-      expect(useAIStore.getState().tabStates[tabId]).toEqual({ messages: [], sending: false });
+      expect(useAIStore.getState().tabStates[tabId]).toEqual({ messages: [], sending: false, pendingQueue: [] });
     });
   });
 
@@ -141,7 +141,9 @@ describe("aiStore", () => {
   describe("getTabState", () => {
     it("returns tab state for existing tab", () => {
       useAIStore.setState({
-        tabStates: { "ai-1": { messages: [{ role: "user", content: "Hi", blocks: [] }], sending: false } },
+        tabStates: {
+          "ai-1": { messages: [{ role: "user", content: "Hi", blocks: [] }], sending: false, pendingQueue: [] },
+        },
       });
 
       const state = useAIStore.getState().getTabState("ai-1");
@@ -150,7 +152,7 @@ describe("aiStore", () => {
 
     it("returns default state for unknown tab", () => {
       const state = useAIStore.getState().getTabState("unknown");
-      expect(state).toEqual({ messages: [], sending: false });
+      expect(state).toEqual({ messages: [], sending: false, pendingQueue: [] });
     });
   });
 
@@ -158,8 +160,8 @@ describe("aiStore", () => {
     it("returns false when no tabs are sending", () => {
       useAIStore.setState({
         tabStates: {
-          "ai-1": { messages: [], sending: false },
-          "ai-2": { messages: [], sending: false },
+          "ai-1": { messages: [], sending: false, pendingQueue: [] },
+          "ai-2": { messages: [], sending: false, pendingQueue: [] },
         },
       });
       expect(useAIStore.getState().isAnySending()).toBe(false);
@@ -168,8 +170,8 @@ describe("aiStore", () => {
     it("returns true when any tab is sending", () => {
       useAIStore.setState({
         tabStates: {
-          "ai-1": { messages: [], sending: false },
-          "ai-2": { messages: [], sending: true },
+          "ai-1": { messages: [], sending: false, pendingQueue: [] },
+          "ai-2": { messages: [], sending: true, pendingQueue: [] },
         },
       });
       expect(useAIStore.getState().isAnySending()).toBe(true);

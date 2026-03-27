@@ -71,6 +71,7 @@ type App struct {
 	mu                      sync.Mutex                 // 保护 connCounter
 	connCounter             int64                      // 连接ID计数器
 	currentConversationID   int64                      // 当前活跃会话ID
+	runners                 sync.Map                   // map[int64]*ai.ConversationRunner
 }
 
 // NewApp 创建App实例

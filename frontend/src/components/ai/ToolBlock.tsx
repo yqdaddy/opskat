@@ -32,6 +32,7 @@ export function ToolBlock({ block }: ToolBlockProps) {
   const Icon = toolIcons[block.toolName || ""] || Terminal;
   const isRunning = block.status === "running";
   const isError = block.status === "error";
+  const isCancelled = block.status === "cancelled";
   const hasOutput = block.content && block.content.length > 0;
 
   return (
@@ -63,7 +64,10 @@ export function ToolBlock({ block }: ToolBlockProps) {
         )}
         <span className="ml-auto shrink-0">
           {isError && <XCircle className="h-3.5 w-3.5 text-destructive/70" />}
-          {!isRunning && !isError && hasOutput && <CheckCircle2 className="h-3.5 w-3.5 text-green-500/70" />}
+          {isCancelled && <XCircle className="h-3.5 w-3.5 text-muted-foreground/50" />}
+          {!isRunning && !isError && !isCancelled && hasOutput && (
+            <CheckCircle2 className="h-3.5 w-3.5 text-green-500/70" />
+          )}
         </span>
       </button>
 

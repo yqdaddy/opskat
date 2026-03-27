@@ -338,6 +338,10 @@ export function PreviewTabbyConfig() {
   return window['go']['app']['App']['PreviewTabbyConfig']();
 }
 
+export function QueueAIMessage(arg1, arg2) {
+  return window['go']['app']['App']['QueueAIMessage'](arg1, arg2);
+}
+
 export function ResizeSSH(arg1, arg2, arg3) {
   return window['go']['app']['App']['ResizeSSH'](arg1, arg2, arg3);
 }
@@ -440,6 +444,10 @@ export function StartForwardConfig(arg1) {
 
 export function StartGitHubDeviceFlow() {
   return window['go']['app']['App']['StartGitHubDeviceFlow']();
+}
+
+export function StopAIGeneration(arg1) {
+  return window['go']['app']['App']['StopAIGeneration'](arg1);
 }
 
 export function StopForwardConfig(arg1) {
