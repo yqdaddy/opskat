@@ -152,7 +152,6 @@ export function RedisKeyBrowser({ tabId }: RedisKeyBrowserProps) {
     return flattenTree(keyTree, treeExpanded);
   }, [keyTree, treeExpanded]);
 
-  // eslint-disable-next-line react-hooks/incompatible-library
   const virtualizer = useVirtualizer({
     count: viewMode === "tree" ? flatRows.length : (state?.keys.length ?? 0),
     getScrollElement: () => scrollRef.current,

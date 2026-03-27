@@ -59,15 +59,11 @@ export function ToolBlock({ block }: ToolBlockProps) {
         )}
         <span className="font-medium text-foreground/80">{block.toolName}</span>
         {block.toolInput && (
-          <code className="min-w-0 truncate text-muted-foreground font-mono text-[10px] ml-0.5">
-            {block.toolInput}
-          </code>
+          <code className="min-w-0 truncate text-muted-foreground font-mono text-[10px] ml-0.5">{block.toolInput}</code>
         )}
         <span className="ml-auto shrink-0">
           {isError && <XCircle className="h-3.5 w-3.5 text-destructive/70" />}
-          {!isRunning && !isError && hasOutput && (
-            <CheckCircle2 className="h-3.5 w-3.5 text-green-500/70" />
-          )}
+          {!isRunning && !isError && hasOutput && <CheckCircle2 className="h-3.5 w-3.5 text-green-500/70" />}
         </span>
       </button>
 

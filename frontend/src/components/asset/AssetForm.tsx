@@ -305,7 +305,7 @@ export function AssetForm({ open, onOpenChange, editAsset, defaultGroupId = 0 }:
   // Reset shared connection fields with type-appropriate defaults
   const resetSharedFields = (type: AssetType, dbDriver = "mysql") => {
     setHost("");
-    setPort(type === "database" ? (DEFAULT_PORTS[dbDriver] || 3306) : (DEFAULT_PORTS[type] || 22));
+    setPort(type === "database" ? DEFAULT_PORTS[dbDriver] || 3306 : DEFAULT_PORTS[type] || 22);
     setUsername(type === "ssh" ? "root" : "");
     setPassword("");
     setEncryptedPassword("");
@@ -355,13 +355,13 @@ export function AssetForm({ open, onOpenChange, editAsset, defaultGroupId = 0 }:
 
     // Reset port/username/password to type-appropriate defaults (keep host)
     const defaultDriver = newType === "database" ? driver : undefined;
-    setPort(newType === "database" ? (DEFAULT_PORTS[defaultDriver || "mysql"] || 3306) : (DEFAULT_PORTS[newType] || 22));
+    setPort(newType === "database" ? DEFAULT_PORTS[defaultDriver || "mysql"] || 3306 : DEFAULT_PORTS[newType] || 22);
     setUsername(newType === "ssh" ? "root" : "");
     setPassword("");
     setEncryptedPassword("");
     setPasswordSource("inline");
     setPasswordCredentialId(0);
-    setIcon(newType === "database" ? (DEFAULT_ICONS[driver] || "mysql") : (DEFAULT_ICONS[newType] || "server"));
+    setIcon(newType === "database" ? DEFAULT_ICONS[driver] || "mysql" : DEFAULT_ICONS[newType] || "server");
   };
 
   const handleDriverChange = (newDriver: string) => {

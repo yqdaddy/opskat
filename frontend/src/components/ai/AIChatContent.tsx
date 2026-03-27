@@ -103,11 +103,7 @@ export function AIChatContent({ tabId }: AIChatContentProps) {
           )}
           {messages.map((msg, i) => (
             <div key={i} className="text-sm">
-              {msg.role === "user" ? (
-                <UserMessage msg={msg} />
-              ) : (
-                <AssistantMessage msg={msg} />
-              )}
+              {msg.role === "user" ? <UserMessage msg={msg} /> : <AssistantMessage msg={msg} />}
             </div>
           ))}
           <div ref={bottomRef} />
@@ -177,9 +173,18 @@ function AssistantMessage({ msg }: { msg: ChatMessage }) {
         <span className="text-xs font-semibold text-primary tracking-wide">Assistant</span>
         <div className="rounded-xl rounded-bl-sm bg-muted px-3.5 py-2.5 max-w-[95%] shadow-sm">
           <div className="flex items-center gap-1 py-1">
-            <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground/50 animate-bounce" style={{ animationDelay: "0ms" }} />
-            <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground/50 animate-bounce" style={{ animationDelay: "150ms" }} />
-            <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground/50 animate-bounce" style={{ animationDelay: "300ms" }} />
+            <span
+              className="h-1.5 w-1.5 rounded-full bg-muted-foreground/50 animate-bounce"
+              style={{ animationDelay: "0ms" }}
+            />
+            <span
+              className="h-1.5 w-1.5 rounded-full bg-muted-foreground/50 animate-bounce"
+              style={{ animationDelay: "150ms" }}
+            />
+            <span
+              className="h-1.5 w-1.5 rounded-full bg-muted-foreground/50 animate-bounce"
+              style={{ animationDelay: "300ms" }}
+            />
           </div>
         </div>
       </div>
@@ -208,7 +213,9 @@ function AssistantMessage({ msg }: { msg: ChatMessage }) {
     <div className="flex flex-col items-start gap-1.5">
       <span className="text-xs font-semibold text-primary tracking-wide">Assistant</span>
       <div className="rounded-xl rounded-bl-sm bg-muted px-3.5 py-2.5 max-w-[95%] min-w-0 overflow-hidden break-words prose prose-sm dark:prose-invert max-w-none prose-p:my-1 prose-pre:my-1 prose-pre:overflow-x-auto shadow-sm">
-        <Markdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeSanitize]}>{msg.content}</Markdown>
+        <Markdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeSanitize]}>
+          {msg.content}
+        </Markdown>
         {msg.streaming && <Loader2 className="h-3 w-3 animate-spin inline-block ml-1" />}
       </div>
     </div>
@@ -220,8 +227,13 @@ function BubbleSegment({ blocks, streaming }: { blocks: ContentBlock[]; streamin
     <div className="rounded-xl rounded-bl-sm bg-muted px-3.5 py-3 max-w-[95%] min-w-0 overflow-hidden shadow-sm space-y-2">
       {blocks.map((block, idx) =>
         block.type === "text" ? (
-          <div key={idx} className="prose prose-sm dark:prose-invert max-w-none prose-p:my-1 prose-pre:my-1 overflow-x-auto break-words">
-            <Markdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeSanitize]}>{block.content}</Markdown>
+          <div
+            key={idx}
+            className="prose prose-sm dark:prose-invert max-w-none prose-p:my-1 prose-pre:my-1 overflow-x-auto break-words"
+          >
+            <Markdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeSanitize]}>
+              {block.content}
+            </Markdown>
           </div>
         ) : block.type === "agent" ? (
           <AgentBlock key={idx} block={block} />

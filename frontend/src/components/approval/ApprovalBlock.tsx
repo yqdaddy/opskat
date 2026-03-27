@@ -68,9 +68,7 @@ export function ApprovalBlock({ block }: ApprovalBlockProps) {
                 : t("ai.approvalSingleTitle")}
           </span>
           {block.agentRole && (
-            <span className="text-[10px] text-muted-foreground bg-muted rounded px-1 py-0.5">
-              {block.agentRole}
-            </span>
+            <span className="text-[10px] text-muted-foreground bg-muted rounded px-1 py-0.5">{block.agentRole}</span>
           )}
         </div>
         <span className="inline-flex items-center rounded-full bg-[#F59E0B20] h-5 px-2 text-[10px] font-semibold text-amber-500">
@@ -85,9 +83,7 @@ export function ApprovalBlock({ block }: ApprovalBlockProps) {
             <div key={i} className="rounded-lg bg-[#1E1A0E] p-2.5 space-y-1.5">
               <div className="flex items-center gap-1.5">
                 <TypeBadge type={item.type} compact />
-                {item.asset_name && (
-                  <span className="text-[11px] text-[#D4A94E]">{item.asset_name}</span>
-                )}
+                {item.asset_name && <span className="text-[11px] text-[#D4A94E]">{item.asset_name}</span>}
               </div>
               <div className="rounded bg-[#16120B] px-2 py-[5px]">
                 <code className="block font-mono text-[10px] text-muted-foreground whitespace-pre-wrap break-all">
@@ -103,18 +99,14 @@ export function ApprovalBlock({ block }: ApprovalBlockProps) {
                 ) : (
                   <>
                     <TypeBadge type={item.type} />
-                    {item.asset_name && (
-                      <span className="text-xs text-[#D4A94E]">{item.asset_name}</span>
-                    )}
+                    {item.asset_name && <span className="text-xs text-[#D4A94E]">{item.asset_name}</span>}
                   </>
                 )}
               </div>
               {kind === "grant" ? (
                 <Textarea
                   value={editedCommands[i] || ""}
-                  onChange={(e) =>
-                    setEditedCommands((prev) => ({ ...prev, [i]: e.target.value }))
-                  }
+                  onChange={(e) => setEditedCommands((prev) => ({ ...prev, [i]: e.target.value }))}
                   className="font-mono text-[11px] min-h-[32px] resize-y bg-background border-border"
                   rows={Math.max(1, (editedCommands[i] || "").split("\n").length)}
                 />
@@ -146,9 +138,7 @@ export function ApprovalBlock({ block }: ApprovalBlockProps) {
             <Input
               key={i}
               value={editedCommands[i] || ""}
-              onChange={(e) =>
-                setEditedCommands((prev) => ({ ...prev, [i]: e.target.value }))
-              }
+              onChange={(e) => setEditedCommands((prev) => ({ ...prev, [i]: e.target.value }))}
               className="font-mono text-[11px] h-8 bg-background border-border"
               placeholder={t("opsctlApproval.patternPlaceholder")}
             />
@@ -159,46 +149,81 @@ export function ApprovalBlock({ block }: ApprovalBlockProps) {
 
       {/* Action buttons */}
       <div className="flex justify-end gap-2 pt-1">
-          {kind === "batch" ? (
-            <>
-              <Button size="sm" variant="outline" className="h-8 rounded-md px-4 text-xs border-[#F59E0B40] text-[#D4A94E] hover:bg-[#F59E0B10] hover:text-[#D4A94E]" onClick={() => respond("deny")}>
-                {t("ai.approvalDenyAll")}
+        {kind === "batch" ? (
+          <>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-8 rounded-md px-4 text-xs border-[#F59E0B40] text-[#D4A94E] hover:bg-[#F59E0B10] hover:text-[#D4A94E]"
+              onClick={() => respond("deny")}
+            >
+              {t("ai.approvalDenyAll")}
+            </Button>
+            <Button
+              size="sm"
+              className="h-8 rounded-md px-4 text-xs bg-amber-500 hover:bg-amber-600 text-[#1A1400] font-semibold"
+              onClick={() => respond("allow")}
+            >
+              {t("ai.approvalAllowAll")}
+            </Button>
+          </>
+        ) : kind === "grant" ? (
+          <>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-8 rounded-md px-4 text-xs border-[#F59E0B40] text-[#D4A94E] hover:bg-[#F59E0B10] hover:text-[#D4A94E]"
+              onClick={() => respond("deny")}
+            >
+              {t("ai.approvalDeny")}
+            </Button>
+            <Button
+              size="sm"
+              className="h-8 rounded-md px-4 text-xs bg-amber-500 hover:bg-amber-600 text-[#1A1400] font-semibold"
+              onClick={() => respond("allow")}
+            >
+              {t("ai.approvalApprove")}
+            </Button>
+          </>
+        ) : (
+          <>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-8 rounded-md px-4 text-xs border-[#F59E0B40] text-[#D4A94E] hover:bg-[#F59E0B10] hover:text-[#D4A94E]"
+              onClick={() => respond("deny")}
+            >
+              {t("ai.approvalDeny")}
+            </Button>
+            {rememberMode ? (
+              <Button
+                size="sm"
+                className="h-8 rounded-md px-4 text-xs bg-[#3D3520] text-[#D4A94E] hover:bg-[#4D4530]"
+                onClick={() => respond("allowAll")}
+              >
+                {t("ai.approvalRememberAndAllow")}
               </Button>
-              <Button size="sm" className="h-8 rounded-md px-4 text-xs bg-amber-500 hover:bg-amber-600 text-[#1A1400] font-semibold" onClick={() => respond("allow")}>
-                {t("ai.approvalAllowAll")}
-              </Button>
-            </>
-          ) : kind === "grant" ? (
-            <>
-              <Button size="sm" variant="outline" className="h-8 rounded-md px-4 text-xs border-[#F59E0B40] text-[#D4A94E] hover:bg-[#F59E0B10] hover:text-[#D4A94E]" onClick={() => respond("deny")}>
-                {t("ai.approvalDeny")}
-              </Button>
-              <Button size="sm" className="h-8 rounded-md px-4 text-xs bg-amber-500 hover:bg-amber-600 text-[#1A1400] font-semibold" onClick={() => respond("allow")}>
-                {t("ai.approvalApprove")}
-              </Button>
-            </>
-          ) : (
-            <>
-              <Button size="sm" variant="outline" className="h-8 rounded-md px-4 text-xs border-[#F59E0B40] text-[#D4A94E] hover:bg-[#F59E0B10] hover:text-[#D4A94E]" onClick={() => respond("deny")}>
-                {t("ai.approvalDeny")}
-              </Button>
-              {rememberMode ? (
-                <Button size="sm" className="h-8 rounded-md px-4 text-xs bg-[#3D3520] text-[#D4A94E] hover:bg-[#4D4530]" onClick={() => respond("allowAll")}>
-                  {t("ai.approvalRememberAndAllow")}
-                </Button>
-              ) : (
-                <Button size="sm" className="h-8 rounded-md px-4 text-xs bg-[#3D3520] text-[#D4A94E] hover:bg-[#4D4530]" onClick={() => {
+            ) : (
+              <Button
+                size="sm"
+                className="h-8 rounded-md px-4 text-xs bg-[#3D3520] text-[#D4A94E] hover:bg-[#4D4530]"
+                onClick={() => {
                   setRememberMode(true);
-                }}>
-                  {t("opsctlApproval.remember")}
-                </Button>
-              )}
-              <Button size="sm" className="h-8 rounded-md px-4 text-xs bg-amber-500 hover:bg-amber-600 text-[#1A1400] font-semibold" onClick={() => respond("allow")}>
-                {rememberMode ? t("ai.approvalOnlyOnce") : t("ai.approvalAllow")}
+                }}
+              >
+                {t("opsctlApproval.remember")}
               </Button>
-            </>
-          )}
-        </div>
+            )}
+            <Button
+              size="sm"
+              className="h-8 rounded-md px-4 text-xs bg-amber-500 hover:bg-amber-600 text-[#1A1400] font-semibold"
+              onClick={() => respond("allow")}
+            >
+              {rememberMode ? t("ai.approvalOnlyOnce") : t("ai.approvalAllow")}
+            </Button>
+          </>
+        )}
+      </div>
     </div>
   );
 }
@@ -227,14 +252,34 @@ function TypeBadge({ type, compact }: { type: string; compact?: boolean }) {
   );
 }
 
-function ScopeBadge({ item }: { item: { asset_id: number; asset_name: string; group_id?: number; group_name?: string } }) {
+function ScopeBadge({
+  item,
+}: {
+  item: { asset_id: number; asset_name: string; group_id?: number; group_name?: string };
+}) {
   const { t } = useTranslation();
-  const cls = "inline-flex items-center gap-[3px] rounded-[3px] border border-[#F59E0B30] h-[18px] px-[5px] text-[8px] font-semibold text-[#D4A94E] bg-background";
+  const cls =
+    "inline-flex items-center gap-[3px] rounded-[3px] border border-[#F59E0B30] h-[18px] px-[5px] text-[8px] font-semibold text-[#D4A94E] bg-background";
   if (item.asset_id > 0) {
-    return <span className={cls}><Server className="h-[11px] w-[11px]" />{item.asset_name}</span>;
+    return (
+      <span className={cls}>
+        <Server className="h-[11px] w-[11px]" />
+        {item.asset_name}
+      </span>
+    );
   }
   if (item.group_id && item.group_id > 0) {
-    return <span className={cls}><FolderOpen className="h-[11px] w-[11px]" />{item.group_name}</span>;
+    return (
+      <span className={cls}>
+        <FolderOpen className="h-[11px] w-[11px]" />
+        {item.group_name}
+      </span>
+    );
   }
-  return <span className={cls}><Globe className="h-[11px] w-[11px]" />{t("opsctlApproval.scopeAll")}</span>;
+  return (
+    <span className={cls}>
+      <Globe className="h-[11px] w-[11px]" />
+      {t("opsctlApproval.scopeAll")}
+    </span>
+  );
 }

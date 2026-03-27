@@ -42,7 +42,7 @@ type CheckResult struct {
 	Message        string   // 返回给 AI 的消息
 	HintRules      []string // 拒绝时的允许规则提示
 	DecisionSource string   // 决策来源（SourcePolicyAllow 等常量）
-	MatchedPattern string // 匹配的命令模式
+	MatchedPattern string   // 匹配的命令模式
 }
 
 // DecisionString 返回决策的字符串表示（用于审计日志存储）
