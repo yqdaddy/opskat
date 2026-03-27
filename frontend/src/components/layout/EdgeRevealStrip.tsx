@@ -10,7 +10,7 @@ export function EdgeRevealStrip({ onClick }: EdgeRevealStripProps) {
 
   return (
     <button
-      className="fixed left-0 top-0 bottom-0 z-40 w-1 hover:w-5 flex items-center justify-center transition-all duration-200 bg-transparent hover:bg-muted/60 hover:backdrop-blur-sm group"
+      className="fixed left-0 top-0 bottom-0 z-40 w-1 hover:w-5 overflow-hidden cursor-pointer flex items-center justify-center transition-all duration-200 bg-transparent hover:bg-muted/60 hover:backdrop-blur-sm group"
       onClick={onClick}
       title={t("panel.showSidebar")}
     >

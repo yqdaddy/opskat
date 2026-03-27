@@ -7,7 +7,7 @@ describe("EdgeRevealStrip", () => {
     cleanup();
   });
 
-  it("renders with chevron icon", () => {
+  it("renders a button", () => {
     render(<EdgeRevealStrip onClick={vi.fn()} />);
     const strip = screen.getByRole("button");
     expect(strip).toBeInTheDocument();
