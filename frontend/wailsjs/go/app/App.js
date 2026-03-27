@@ -218,6 +218,10 @@ export function GetStoredGitHubUser() {
   return window['go']['app']['App']['GetStoredGitHubUser']();
 }
 
+export function GetSystemStatus() {
+  return window['go']['app']['App']['GetSystemStatus']();
+}
+
 export function GetUpdateChannel() {
   return window['go']['app']['App']['GetUpdateChannel']();
 }

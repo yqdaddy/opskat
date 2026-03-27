@@ -51,9 +51,7 @@ function App() {
     const cancel = EventsOn("system:status", (entries: Array<{ level: string }>) => {
       if (!entries || entries.length === 0) return;
       const hasError = entries.some((e) => e.level === "error");
-      const message = hasError
-        ? t("systemStatus.toastError")
-        : t("systemStatus.toastWarn");
+      const message = hasError ? t("systemStatus.toastError") : t("systemStatus.toastWarn");
       const toastFn = hasError ? toast.error : toast.warning;
       toastFn(message, {
         action: {

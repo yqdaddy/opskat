@@ -1,14 +1,7 @@
 import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import {
-  CircleCheck,
-  Info,
-  TriangleAlert,
-  OctagonX,
-  ChevronDown,
-  ChevronRight,
-} from "lucide-react";
+import { CircleCheck, Info, TriangleAlert, OctagonX, ChevronDown, ChevronRight } from "lucide-react";
 import { GetSystemStatus } from "../../../wailsjs/go/app/App";
 
 interface StatusEntry {
@@ -26,21 +19,15 @@ const levelConfig = {
 };
 
 function StatusEntryItem({ entry }: { entry: StatusEntry }) {
-  const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
   const config = levelConfig[entry.level] || levelConfig.info;
   const Icon = config.icon;
 
   return (
     <div className={`rounded-md border p-3 ${config.bg}`}>
-      <div
-        className="flex items-center gap-2 cursor-pointer"
-        onClick={() => entry.detail && setExpanded(!expanded)}
-      >
+      <div className="flex items-center gap-2 cursor-pointer" onClick={() => entry.detail && setExpanded(!expanded)}>
         <Icon className={`h-4 w-4 shrink-0 ${config.color}`} />
-        <span className="text-xs font-medium text-muted-foreground px-1.5 py-0.5 rounded bg-muted">
-          {entry.source}
-        </span>
+        <span className="text-xs font-medium text-muted-foreground px-1.5 py-0.5 rounded bg-muted">{entry.source}</span>
         <span className="text-sm flex-1">{entry.message}</span>
         {entry.detail && (
           <button className="text-muted-foreground hover:text-foreground">
@@ -62,8 +49,8 @@ export function SystemStatusSection() {
   const [entries, setEntries] = useState<StatusEntry[]>([]);
 
   useEffect(() => {
-    GetSystemStatus().then((data: StatusEntry[]) => {
-      setEntries(data || []);
+    GetSystemStatus().then((data) => {
+      setEntries((data as StatusEntry[]) || []);
     });
   }, []);
 

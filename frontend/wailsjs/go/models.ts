@@ -104,6 +104,7 @@ export namespace ai {
 	}
 	export class ToolCall {
 	    id: string;
+	    type: string;
 	    // Go type: struct { Name string "json:\"name\""; Arguments string "json:\"arguments\"" }
 	    function: any;
 	
@@ -114,6 +115,7 @@ export namespace ai {
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.id = source["id"];
+	        this.type = source["type"];
 	        this.function = this.convertValues(source["function"], Object);
 	    }
 	
@@ -1195,6 +1197,50 @@ export namespace sshpool {
 	        this.ref_count = source["ref_count"];
 	        this.last_used = source["last_used"];
 	    }
+	}
+
+}
+
+export namespace status {
+	
+	export class Entry {
+	    level: string;
+	    source: string;
+	    message: string;
+	    detail: string;
+	    // Go type: time
+	    time: any;
+	
+	    static createFrom(source: any = {}) {
+	        return new Entry(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.level = source["level"];
+	        this.source = source["source"];
+	        this.message = source["message"];
+	        this.detail = source["detail"];
+	        this.time = this.convertValues(source["time"], null);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
 	}
 
 }

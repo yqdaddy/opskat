@@ -10,6 +10,7 @@ import {group_entity} from '../models';
 import {credential_entity} from '../models';
 import {backup_svc} from '../models';
 import {sshpool} from '../models';
+import {status} from '../models';
 import {import_svc} from '../models';
 import {audit_repo} from '../models';
 import {ai} from '../models';
@@ -122,6 +123,8 @@ export function GetSSHPoolConnections():Promise<Array<sshpool.PoolEntryInfo>>;
 export function GetSkillPreview():Promise<string>;
 
 export function GetStoredGitHubUser():Promise<string>;
+
+export function GetSystemStatus():Promise<Array<status.Entry>>;
 
 export function GetUpdateChannel():Promise<string>;
 
