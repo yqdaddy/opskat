@@ -24,30 +24,56 @@ export interface TerminalTheme {
   brightWhite: string;
 }
 
-/** 默认亮色终端主题 */
+/** 默认亮色终端主题 — 背景色与应用浅色主题 oklch(0.96 0.01 250) 一致 */
 export const defaultLightTheme: TerminalTheme = {
   id: "default-light",
   name: "Default Light",
-  background: "#ffffff",
-  foreground: "#383a42",
-  cursor: "#383a42",
-  selectionBackground: "#add6ff",
-  black: "#383a42",
+  background: "#edf2f8",
+  foreground: "#2b3040",
+  cursor: "#2b3040",
+  selectionBackground: "#bdd0ea",
+  black: "#2b3040",
   red: "#e45649",
   green: "#50a14f",
   yellow: "#c18401",
   blue: "#4078f2",
   magenta: "#a626a4",
   cyan: "#0184bc",
-  white: "#fafafa",
-  brightBlack: "#4f525e",
+  white: "#edf2f8",
+  brightBlack: "#4e5569",
   brightRed: "#e06c75",
   brightGreen: "#98c379",
   brightYellow: "#e5c07b",
   brightBlue: "#61afef",
   brightMagenta: "#c678dd",
   brightCyan: "#56b6c2",
-  brightWhite: "#ffffff",
+  brightWhite: "#f5f8fc",
+};
+
+/** 默认暗色终端主题 — 背景色与应用深色主题 oklch(0.18 0.025 250) 一致 */
+export const defaultDarkTheme: TerminalTheme = {
+  id: "default-dark",
+  name: "Default Dark",
+  background: "#09121c",
+  foreground: "#e7ecf0",
+  cursor: "#e7ecf0",
+  selectionBackground: "#1e3050",
+  black: "#09121c",
+  red: "#f07178",
+  green: "#a6d189",
+  yellow: "#e5c07b",
+  blue: "#7b93f5",
+  magenta: "#c78ddd",
+  cyan: "#89dceb",
+  white: "#e7ecf0",
+  brightBlack: "#4e5569",
+  brightRed: "#f38ba8",
+  brightGreen: "#a6e3a1",
+  brightYellow: "#f9e2af",
+  brightBlue: "#89b4fa",
+  brightMagenta: "#cba6f7",
+  brightCyan: "#94e2d5",
+  brightWhite: "#f5f8fc",
 };
 
 export const builtinThemes: TerminalTheme[] = [

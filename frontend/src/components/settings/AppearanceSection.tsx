@@ -9,7 +9,7 @@ import { Separator } from "@/components/ui/separator";
 import { useTheme, useResolvedTheme } from "@/components/theme-provider";
 import { Plus, Pencil, Trash2 } from "lucide-react";
 import { useTerminalThemeStore } from "@/stores/terminalThemeStore";
-import { builtinThemes, defaultLightTheme, TerminalTheme } from "@/data/terminalThemes";
+import { builtinThemes, defaultLightTheme, defaultDarkTheme, TerminalTheme } from "@/data/terminalThemes";
 import { TerminalThemeEditor } from "@/components/settings/TerminalThemeEditor";
 import { cn } from "@/lib/utils";
 
@@ -133,27 +133,19 @@ export function TerminalSection() {
                   selectedThemeId === "default" && "ring-2 ring-primary"
                 )}
               >
-                {resolvedTheme === "dark" ? (
-                  <div className="rounded h-10 mb-1.5 flex items-center justify-center bg-black">
-                    <span className="text-white text-xs font-mono">&gt;_</span>
-                  </div>
-                ) : (
-                  <div
-                    className="rounded h-10 mb-1.5 flex items-end p-1 gap-0.5"
-                    style={{ background: defaultLightTheme.background }}
-                  >
-                    {[
-                      defaultLightTheme.red,
-                      defaultLightTheme.green,
-                      defaultLightTheme.yellow,
-                      defaultLightTheme.blue,
-                      defaultLightTheme.magenta,
-                      defaultLightTheme.cyan,
-                    ].map((c, i) => (
-                      <div key={i} className="w-2 h-3 rounded-sm" style={{ background: c }} />
-                    ))}
-                  </div>
-                )}
+                {(() => {
+                  const dt = resolvedTheme === "dark" ? defaultDarkTheme : defaultLightTheme;
+                  return (
+                    <div
+                      className="rounded h-10 mb-1.5 flex items-end p-1 gap-0.5"
+                      style={{ background: dt.background }}
+                    >
+                      {[dt.red, dt.green, dt.yellow, dt.blue, dt.magenta, dt.cyan].map((c, i) => (
+                        <div key={i} className="w-2 h-3 rounded-sm" style={{ background: c }} />
+                      ))}
+                    </div>
+                  );
+                })()}
                 <div className="text-xs truncate font-medium">{t("terminal.default")}</div>
               </button>
               {builtinThemes.map((bt) => (

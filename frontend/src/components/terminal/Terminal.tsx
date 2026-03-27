@@ -7,7 +7,7 @@ import { EventsOn, EventsOff } from "../../../wailsjs/runtime/runtime";
 import { useShortcutStore, matchShortcut } from "@/stores/shortcutStore";
 import { useTerminalStore } from "@/stores/terminalStore";
 import { useTerminalThemeStore, toXtermTheme } from "@/stores/terminalThemeStore";
-import { builtinThemes, defaultLightTheme } from "@/data/terminalThemes";
+import { builtinThemes, defaultLightTheme, defaultDarkTheme } from "@/data/terminalThemes";
 import { useResolvedTheme } from "@/components/theme-provider";
 
 interface TerminalProps {
@@ -26,7 +26,7 @@ export function Terminal({ sessionId, active }: TerminalProps) {
   const resolvedTheme = useResolvedTheme();
   const xtermTheme = useMemo(() => {
     if (selectedThemeId === "default") {
-      return resolvedTheme === "light" ? toXtermTheme(defaultLightTheme) : undefined;
+      return resolvedTheme === "light" ? toXtermTheme(defaultLightTheme) : toXtermTheme(defaultDarkTheme);
     }
     const theme =
       builtinThemes.find((t) => t.id === selectedThemeId) || customThemes.find((t) => t.id === selectedThemeId);
