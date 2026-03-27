@@ -176,5 +176,11 @@ func TestParseChecksums(t *testing.T) {
 			result := parseChecksums(input)
 			assert.Equal(t, "abc123", result["file1.tar.gz"])
 		})
+
+		convey.Convey("二进制模式 * 前缀", func() {
+			input := "abc123 *file1.tar.gz\n"
+			result := parseChecksums(input)
+			assert.Equal(t, "abc123", result["file1.tar.gz"])
+		})
 	})
 }
