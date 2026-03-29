@@ -30,7 +30,7 @@ export function ConnectSSH(arg1:app.SSHConnectRequest):Promise<string>;
 
 export function ConnectSSHAsync(arg1:app.SSHConnectRequest):Promise<string>;
 
-export function CopyPolicyGroup(arg1:number,arg2:string):Promise<policy_group_entity.PolicyGroup>;
+export function CopyPolicyGroup(arg1:string,arg2:string):Promise<policy_group_entity.PolicyGroup>;
 
 export function CreateAIProvider(arg1:string,arg2:string,arg3:string,arg4:string,arg5:string,arg6:number,arg7:number):Promise<app.AIProviderInfo>;
 
@@ -58,7 +58,7 @@ export function DeleteForwardConfig(arg1:number):Promise<void>;
 
 export function DeleteGroup(arg1:number,arg2:boolean):Promise<void>;
 
-export function DeletePolicyGroup(arg1:number):Promise<void>;
+export function DeletePolicyGroup(arg1:string):Promise<void>;
 
 export function DetectOpsctl():Promise<app.OpsctlInfo>;
 

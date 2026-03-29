@@ -44,7 +44,7 @@ func TestPolicyGroupSvc_List(t *testing.T) {
 			// 内置组标记 builtin=true
 			for i := 0; i < builtinCount; i++ {
 				assert.True(t, items[i].Builtin)
-				assert.True(t, items[i].ID < 0)
+				assert.True(t, policy_group_entity.IsBuiltinID(items[i].ID))
 			}
 			// 用户自定义组标记 builtin=false
 			assert.False(t, items[builtinCount].Builtin)
@@ -87,11 +87,11 @@ func TestPolicyGroupSvc_Get(t *testing.T) {
 			assert.NoError(t, err)
 			assert.Equal(t, policy.BuiltinLinuxReadOnly, item.ID)
 			assert.True(t, item.Builtin)
-			assert.Equal(t, "Linux 常用只读", item.Name)
+			assert.Equal(t, "Linux Read-Only", item.Name)
 		})
 
 		convey.Convey("获取不存在的内置权限组返回错误", func() {
-			_, err := PolicyGroup().Get(ctx, -999)
+			_, err := PolicyGroup().Get(ctx, "builtin:nonexistent")
 			assert.Error(t, err)
 		})
 
@@ -101,7 +101,7 @@ func TestPolicyGroupSvc_Get(t *testing.T) {
 			}
 			mockRepo.EXPECT().Find(gomock.Any(), int64(10)).Return(expected, nil)
 
-			item, err := PolicyGroup().Get(ctx, 10)
+			item, err := PolicyGroup().Get(ctx, "10")
 			assert.NoError(t, err)
 			assert.False(t, item.Builtin)
 			assert.Equal(t, "我的组", item.Name)
@@ -164,14 +164,14 @@ func TestPolicyGroupSvc_Update(t *testing.T) {
 			assert.Greater(t, pg.Updatetime, int64(0))
 		})
 
-		convey.Convey("更新内置组被拒绝", func() {
+		convey.Convey("更新ID<=0的组被拒绝", func() {
 			pg := &policy_group_entity.PolicyGroup{
-				ID: policy.BuiltinLinuxReadOnly, Name: "不允许", PolicyType: policy_group_entity.PolicyTypeCommand,
+				ID: 0, Name: "不允许", PolicyType: policy_group_entity.PolicyTypeCommand,
 			}
 
 			err := PolicyGroup().Update(ctx, pg)
 			assert.Error(t, err)
-			assert.Contains(t, err.Error(), "内置权限组不可修改")
+			assert.Contains(t, err.Error(), "无效的权限组 ID")
 		})
 	})
 }
@@ -183,7 +183,7 @@ func TestPolicyGroupSvc_Delete(t *testing.T) {
 		convey.Convey("删除用户自定义组成功", func() {
 			mockRepo.EXPECT().Delete(gomock.Any(), int64(5)).Return(nil)
 
-			err := PolicyGroup().Delete(ctx, 5)
+			err := PolicyGroup().Delete(ctx, "5")
 			assert.NoError(t, err)
 		})
 
@@ -221,21 +221,21 @@ func TestPolicyGroupSvc_Copy(t *testing.T) {
 		convey.Convey("从内置组复制使用默认名称（副本）", func() {
 			mockRepo.EXPECT().Create(gomock.Any(), gomock.Any()).DoAndReturn(
 				func(_ context.Context, pg *policy_group_entity.PolicyGroup) error {
-					assert.Equal(t, "Linux 常用只读 (副本)", pg.Name)
+					assert.Equal(t, "Linux Read-Only (副本)", pg.Name)
 					return nil
 				},
 			)
 
 			result, err := PolicyGroup().Copy(ctx, policy.BuiltinLinuxReadOnly, "")
 			assert.NoError(t, err)
-			assert.Equal(t, "Linux 常用只读 (副本)", result.Name)
+			assert.Equal(t, "Linux Read-Only (副本)", result.Name)
 		})
 
 		convey.Convey("从用户自定义组复制成功", func() {
 			source := &policy_group_entity.PolicyGroup{
 				ID: 10, Name: "源组", Description: "描述",
 				PolicyType: policy_group_entity.PolicyTypeQuery,
-				Policy:     `{"allow_types":["SELECT"],"groups":[-5]}`,
+				Policy:     `{"allow_types":["SELECT"],"groups":["builtin:sql-readonly"]}`,
 			}
 			mockRepo.EXPECT().Find(gomock.Any(), int64(10)).Return(source, nil)
 			mockRepo.EXPECT().Create(gomock.Any(), gomock.Any()).DoAndReturn(
@@ -248,13 +248,13 @@ func TestPolicyGroupSvc_Copy(t *testing.T) {
 				},
 			)
 
-			result, err := PolicyGroup().Copy(ctx, 10, "新名称")
+			result, err := PolicyGroup().Copy(ctx, "10", "新名称")
 			assert.NoError(t, err)
 			assert.Equal(t, "新名称", result.Name)
 		})
 
 		convey.Convey("复制不存在的内置组返回错误", func() {
-			_, err := PolicyGroup().Copy(ctx, -999, "test")
+			_, err := PolicyGroup().Copy(ctx, "builtin:nonexistent", "test")
 			assert.Error(t, err)
 		})
 	})

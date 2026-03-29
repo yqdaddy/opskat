@@ -73,7 +73,7 @@ export function AssetDetail({ asset, isConnecting, onEdit, onDelete, onConnect }
   // SSH Command policy
   const [allowList, setAllowList] = useState<string[]>([]);
   const [denyList, setDenyList] = useState<string[]>([]);
-  const [policyGroups, setPolicyGroups] = useState<number[]>([]);
+  const [policyGroups, setPolicyGroups] = useState<string[]>([]);
 
   // Database Query policy
   const [queryAllowTypes, setQueryAllowTypes] = useState<string[]>([]);
@@ -112,7 +112,7 @@ export function AssetDetail({ asset, isConnecting, onEdit, onDelete, onConnect }
     // input states are managed internally by PolicyTagEditor
   }, [asset.ID, asset.CmdPolicy, asset.Type]);
 
-  const savePolicy = async (policyObj: Record<string, unknown>, groups?: number[]) => {
+  const savePolicy = async (policyObj: Record<string, unknown>, groups?: string[]) => {
     // Remove empty arrays (except groups which is managed separately)
     const cleaned: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(policyObj)) {
@@ -132,7 +132,7 @@ export function AssetDetail({ asset, isConnecting, onEdit, onDelete, onConnect }
     }
   };
 
-  const handleSaveSSHPolicy = async (newAllow: string[], newDeny: string[], groups?: number[]) => {
+  const handleSaveSSHPolicy = async (newAllow: string[], newDeny: string[], groups?: string[]) => {
     await savePolicy({ allow_list: newAllow, deny_list: newDeny }, groups);
   };
 
@@ -140,16 +140,16 @@ export function AssetDetail({ asset, isConnecting, onEdit, onDelete, onConnect }
     newAllowTypes: string[],
     newDenyTypes: string[],
     newDenyFlags: string[],
-    groups?: number[]
+    groups?: string[]
   ) => {
     await savePolicy({ allow_types: newAllowTypes, deny_types: newDenyTypes, deny_flags: newDenyFlags }, groups);
   };
 
-  const handleSaveRedisPolicy = async (newAllow: string[], newDeny: string[], groups?: number[]) => {
+  const handleSaveRedisPolicy = async (newAllow: string[], newDeny: string[], groups?: string[]) => {
     await savePolicy({ allow_list: newAllow, deny_list: newDeny }, groups);
   };
 
-  const handleGroupsChange = (newGroups: number[]) => {
+  const handleGroupsChange = (newGroups: string[]) => {
     setPolicyGroups(newGroups);
     if (asset.Type === "database") {
       handleSaveQueryPolicy(queryAllowTypes, queryDenyTypes, queryDenyFlags, newGroups);

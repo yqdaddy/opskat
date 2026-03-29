@@ -4,7 +4,7 @@ package policy
 type CommandPolicy struct {
 	AllowList []string `json:"allow_list"`       // 直接执行的命令规则
 	DenyList  []string `json:"deny_list"`        // 始终拒绝的命令规则
-	Groups    []int64  `json:"groups,omitempty"` // 引用的权限组 ID
+	Groups    []string `json:"groups,omitempty"` // 引用的权限组 ID（内置组: "builtin:xxx", 用户组: "123"）
 }
 
 // IsEmpty 检查策略是否为空（无规则且无引用组）
@@ -15,7 +15,7 @@ func (p *CommandPolicy) IsEmpty() bool {
 // DefaultCommandPolicy 返回默认命令权限策略（引用内置权限组）
 func DefaultCommandPolicy() *CommandPolicy {
 	return &CommandPolicy{
-		Groups: []int64{BuiltinLinuxReadOnly, BuiltinDangerousDeny},
+		Groups: []string{BuiltinLinuxReadOnly, BuiltinDangerousDeny},
 	}
 }
 
@@ -24,7 +24,7 @@ type QueryPolicy struct {
 	AllowTypes []string `json:"allow_types"`      // 允许的语句类型: SELECT, SHOW, DESCRIBE, EXPLAIN
 	DenyTypes  []string `json:"deny_types"`       // 拒绝的语句类型: DROP TABLE, TRUNCATE, ...
 	DenyFlags  []string `json:"deny_flags"`       // 拒绝的特征: no_where_delete, prepare, call
-	Groups     []int64  `json:"groups,omitempty"` // 引用的权限组 ID
+	Groups     []string `json:"groups,omitempty"` // 引用的权限组 ID
 }
 
 // IsEmpty 检查策略是否为空
@@ -35,7 +35,7 @@ func (p *QueryPolicy) IsEmpty() bool {
 // DefaultQueryPolicy 返回默认 SQL 权限策略（引用内置权限组）
 func DefaultQueryPolicy() *QueryPolicy {
 	return &QueryPolicy{
-		Groups: []int64{BuiltinSQLReadOnly, BuiltinSQLDangerousDeny},
+		Groups: []string{BuiltinSQLReadOnly, BuiltinSQLDangerousDeny},
 	}
 }
 
@@ -43,7 +43,7 @@ func DefaultQueryPolicy() *QueryPolicy {
 type RedisPolicy struct {
 	AllowList []string `json:"allow_list"`       // 允许的命令模式
 	DenyList  []string `json:"deny_list"`        // 拒绝的命令模式
-	Groups    []int64  `json:"groups,omitempty"` // 引用的权限组 ID
+	Groups    []string `json:"groups,omitempty"` // 引用的权限组 ID
 }
 
 // IsEmpty 检查策略是否为空
@@ -61,19 +61,22 @@ type Holder interface {
 // DefaultRedisPolicy 返回默认 Redis 权限策略（引用内置权限组）
 func DefaultRedisPolicy() *RedisPolicy {
 	return &RedisPolicy{
-		Groups: []int64{BuiltinRedisReadOnly, BuiltinRedisDangerousDeny},
+		Groups: []string{BuiltinRedisReadOnly, BuiltinRedisDangerousDeny},
 	}
 }
 
 // --- 内置权限组 ID 常量 ---
 
 const (
-	BuiltinLinuxReadOnly      int64 = -1
-	BuiltinK8sReadOnly        int64 = -2
-	BuiltinDockerReadOnly     int64 = -3
-	BuiltinDangerousDeny      int64 = -4
-	BuiltinSQLReadOnly        int64 = -5
-	BuiltinSQLDangerousDeny   int64 = -6
-	BuiltinRedisReadOnly      int64 = -7
-	BuiltinRedisDangerousDeny int64 = -8
+	BuiltinLinuxReadOnly      = "builtin:linux-readonly"
+	BuiltinK8sReadOnly        = "builtin:k8s-readonly"
+	BuiltinDockerReadOnly     = "builtin:docker-readonly"
+	BuiltinDangerousDeny      = "builtin:dangerous-deny"
+	BuiltinSQLReadOnly        = "builtin:sql-readonly"
+	BuiltinSQLDangerousDeny   = "builtin:sql-dangerous-deny"
+	BuiltinRedisReadOnly      = "builtin:redis-readonly"
+	BuiltinRedisDangerousDeny = "builtin:redis-dangerous-deny"
+
+	// BuiltinPrefix 内置权限组 ID 前缀
+	BuiltinPrefix = "builtin:"
 )

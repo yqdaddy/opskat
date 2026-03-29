@@ -30,8 +30,8 @@ interface CommandPolicyCardProps {
   assetID?: number;
   groupID?: number;
   onReset?: () => void;
-  referencedGroups?: number[];
-  onGroupsChange?: (ids: number[]) => void;
+  referencedGroups?: string[];
+  onGroupsChange?: (ids: string[]) => void;
 }
 
 export function CommandPolicyCard({

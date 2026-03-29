@@ -46,55 +46,51 @@ func TestPolicyGroup_Validate(t *testing.T) {
 
 func TestPolicyGroup_ToItem(t *testing.T) {
 	convey.Convey("ToItem转换", t, func() {
-		convey.Convey("builtin=true时Builtin字段为true", func() {
+		convey.Convey("内置组转换后ID为字符串且Builtin为true", func() {
 			pg := &PolicyGroup{
-				ID:          -1,
-				Name:        "内置组",
-				Description: "内置组描述",
+				BuiltinID:   policy.BuiltinLinuxReadOnly,
+				Name:        "Linux Read-Only",
+				Description: "Common Linux read-only commands",
 				PolicyType:  PolicyTypeCommand,
 				Policy:      `{}`,
-				Createtime:  1000,
-				Updatetime:  2000,
 			}
-			item := pg.ToItem(true)
-			assert.Equal(t, pg.ID, item.ID)
+			item := pg.ToItem()
+			assert.Equal(t, policy.BuiltinLinuxReadOnly, item.ID)
 			assert.Equal(t, pg.Name, item.Name)
 			assert.Equal(t, pg.Description, item.Description)
 			assert.Equal(t, pg.PolicyType, item.PolicyType)
 			assert.Equal(t, pg.Policy, item.Policy)
-			assert.Equal(t, pg.Createtime, item.Createtime)
-			assert.Equal(t, pg.Updatetime, item.Updatetime)
 			assert.True(t, item.Builtin)
 		})
 
-		convey.Convey("builtin=false时Builtin字段为false", func() {
+		convey.Convey("用户组转换后ID为数字字符串且Builtin为false", func() {
 			pg := &PolicyGroup{
 				ID:         1,
 				Name:       "用户组",
 				PolicyType: PolicyTypeQuery,
 				Policy:     `{}`,
 			}
-			item := pg.ToItem(false)
+			item := pg.ToItem()
 			assert.False(t, item.Builtin)
-			assert.Equal(t, int64(1), item.ID)
+			assert.Equal(t, "1", item.ID)
 		})
 	})
 }
 
 func TestIsBuiltinID(t *testing.T) {
 	convey.Convey("IsBuiltinID检查", t, func() {
-		convey.Convey("负数ID为内置", func() {
-			assert.True(t, IsBuiltinID(-1))
-			assert.True(t, IsBuiltinID(-100))
+		convey.Convey("builtin:前缀为内置", func() {
+			assert.True(t, IsBuiltinID("builtin:linux-readonly"))
+			assert.True(t, IsBuiltinID("builtin:k8s-readonly"))
 		})
 
-		convey.Convey("0不是内置", func() {
-			assert.False(t, IsBuiltinID(0))
+		convey.Convey("空字符串不是内置", func() {
+			assert.False(t, IsBuiltinID(""))
 		})
 
-		convey.Convey("正数ID不是内置", func() {
-			assert.False(t, IsBuiltinID(1))
-			assert.False(t, IsBuiltinID(100))
+		convey.Convey("数字字符串不是内置", func() {
+			assert.False(t, IsBuiltinID("1"))
+			assert.False(t, IsBuiltinID("100"))
 		})
 	})
 }
@@ -104,17 +100,17 @@ func TestFindBuiltin(t *testing.T) {
 		convey.Convey("按已知ID查找应返回对应内置组", func() {
 			pg := FindBuiltin(policy.BuiltinLinuxReadOnly)
 			assert.NotNil(t, pg)
-			assert.Equal(t, policy.BuiltinLinuxReadOnly, pg.ID)
+			assert.Equal(t, policy.BuiltinLinuxReadOnly, pg.BuiltinID)
 			assert.Equal(t, PolicyTypeCommand, pg.PolicyType)
 		})
 
 		convey.Convey("按不存在的ID查找应返回nil", func() {
-			pg := FindBuiltin(-999)
+			pg := FindBuiltin("builtin:nonexistent")
 			assert.Nil(t, pg)
 		})
 
-		convey.Convey("正数ID查找应返回nil", func() {
-			pg := FindBuiltin(1)
+		convey.Convey("数字字符串查找应返回nil", func() {
+			pg := FindBuiltin("1")
 			assert.Nil(t, pg)
 		})
 	})
@@ -128,9 +124,9 @@ func TestBuiltinGroups(t *testing.T) {
 			assert.Len(t, groups, 8)
 		})
 
-		convey.Convey("所有内置组ID均为负数", func() {
+		convey.Convey("所有内置组ID均以builtin:开头", func() {
 			for _, g := range groups {
-				assert.True(t, g.ID < 0, "内置组ID应为负数，实际ID=%d", g.ID)
+				assert.True(t, IsBuiltinID(g.BuiltinID), "内置组ID应以builtin:开头，实际ID=%s", g.BuiltinID)
 			}
 		})
 

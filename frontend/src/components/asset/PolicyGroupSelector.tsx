@@ -10,8 +10,8 @@ type PolicyType = "ssh" | "database" | "redis";
 
 interface PolicyGroupSelectorProps {
   policyType: PolicyType;
-  selectedIds: number[];
-  onChange: (ids: number[]) => void;
+  selectedIds: string[];
+  onChange: (ids: string[]) => void;
   refreshKey?: number;
 }
 
@@ -20,6 +20,11 @@ const policyTypeMap: Record<PolicyType, string> = {
   database: "query",
   redis: "redis",
 };
+
+/** 获取内置权限组的 i18n 短 ID（去掉 builtin: 前缀） */
+function builtinShortId(id: string): string {
+  return id.replace("builtin:", "");
+}
 
 export function PolicyGroupSelector({ policyType, selectedIds, onChange, refreshKey }: PolicyGroupSelectorProps) {
   const { t } = useTranslation();
@@ -40,14 +45,20 @@ export function PolicyGroupSelector({ policyType, selectedIds, onChange, refresh
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [policyType, refreshKey]);
 
+  const displayName = (g: policy_group_entity.PolicyGroupItem) =>
+    g.builtin ? t(`asset.policyGroup.builtin.${builtinShortId(g.id)}.name`) : g.name;
+
+  const displayDesc = (g: policy_group_entity.PolicyGroupItem) =>
+    g.builtin ? t(`asset.policyGroup.builtin.${builtinShortId(g.id)}.desc`) : g.description;
+
   const selectedGroups = groups.filter((g) => selectedIds.includes(g.id));
   const availableGroups = groups.filter((g) => !selectedIds.includes(g.id));
 
-  const handleAdd = (id: number) => {
+  const handleAdd = (id: string) => {
     onChange([...selectedIds, id]);
   };
 
-  const handleRemove = (id: number) => {
+  const handleRemove = (id: string) => {
     onChange(selectedIds.filter((i) => i !== id));
   };
 
@@ -65,7 +76,7 @@ export function PolicyGroupSelector({ policyType, selectedIds, onChange, refresh
             className="inline-flex items-center gap-1 rounded-md border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-[11px] text-indigo-700 dark:border-indigo-800 dark:bg-indigo-950 dark:text-indigo-300"
           >
             {g.builtin && <Lock className="h-2.5 w-2.5" />}
-            {g.name}
+            {displayName(g)}
             <button
               onClick={() => handleRemove(g.id)}
               className="ml-0.5 rounded-sm hover:bg-indigo-200 dark:hover:bg-indigo-800"
@@ -97,8 +108,8 @@ export function PolicyGroupSelector({ policyType, selectedIds, onChange, refresh
                   >
                     {g.builtin && <Lock className="h-3 w-3 text-muted-foreground shrink-0" />}
                     <div className="flex-1 text-left">
-                      <div className="font-medium">{g.name}</div>
-                      {g.description && <div className="text-[10px] text-muted-foreground">{g.description}</div>}
+                      <div className="font-medium">{displayName(g)}</div>
+                      {displayDesc(g) && <div className="text-[10px] text-muted-foreground">{displayDesc(g)}</div>}
                     </div>
                   </button>
                 ))}

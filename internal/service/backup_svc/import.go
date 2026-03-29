@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strconv"
 
 	"github.com/cago-frame/cago/database/db"
 	"github.com/cago-frame/cago/pkg/logger"
@@ -346,7 +347,7 @@ func remapPolicyGroupRefs(policyJSON string, pgIDMap map[int64]int64) string {
 	if !ok {
 		return policyJSON
 	}
-	var groups []int64
+	var groups []string
 	if err := json.Unmarshal(groupsRaw, &groups); err != nil {
 		return policyJSON
 	}
@@ -355,8 +356,12 @@ func remapPolicyGroupRefs(policyJSON string, pgIDMap map[int64]int64) string {
 		if policy_group_entity.IsBuiltinID(id) {
 			continue
 		}
-		if newID, ok := pgIDMap[id]; ok {
-			groups[i] = newID
+		oldID, err := strconv.ParseInt(id, 10, 64)
+		if err != nil {
+			continue
+		}
+		if newID, ok := pgIDMap[oldID]; ok {
+			groups[i] = strconv.FormatInt(newID, 10)
 			changed = true
 		}
 	}

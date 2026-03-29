@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/cago-frame/cago/pkg/logger"
@@ -16,11 +18,11 @@ import (
 // PolicyGroupSvc 权限组业务接口
 type PolicyGroupSvc interface {
 	List(ctx context.Context, policyType string) ([]*policy_group_entity.PolicyGroupItem, error)
-	Get(ctx context.Context, id int64) (*policy_group_entity.PolicyGroupItem, error)
+	Get(ctx context.Context, id string) (*policy_group_entity.PolicyGroupItem, error)
 	Create(ctx context.Context, pg *policy_group_entity.PolicyGroup) error
 	Update(ctx context.Context, pg *policy_group_entity.PolicyGroup) error
-	Delete(ctx context.Context, id int64) error
-	Copy(ctx context.Context, id int64, name string) (*policy_group_entity.PolicyGroup, error)
+	Delete(ctx context.Context, id string) error
+	Copy(ctx context.Context, id string, name string) (*policy_group_entity.PolicyGroup, error)
 }
 
 type policyGroupSvc struct{}
@@ -39,7 +41,7 @@ func (s *policyGroupSvc) List(ctx context.Context, policyType string) ([]*policy
 		if policyType != "" && pg.PolicyType != policyType {
 			continue
 		}
-		items = append(items, pg.ToItem(true))
+		items = append(items, pg.ToItem())
 	}
 
 	// 用户自定义组
@@ -56,25 +58,29 @@ func (s *policyGroupSvc) List(ctx context.Context, policyType string) ([]*policy
 		return items, nil
 	}
 	for _, pg := range userGroups {
-		items = append(items, pg.ToItem(false))
+		items = append(items, pg.ToItem())
 	}
 
 	return items, nil
 }
 
-func (s *policyGroupSvc) Get(ctx context.Context, id int64) (*policy_group_entity.PolicyGroupItem, error) {
+func (s *policyGroupSvc) Get(ctx context.Context, id string) (*policy_group_entity.PolicyGroupItem, error) {
 	if policy_group_entity.IsBuiltinID(id) {
 		pg := policy_group_entity.FindBuiltin(id)
 		if pg == nil {
 			return nil, errors.New("内置权限组不存在")
 		}
-		return pg.ToItem(true), nil
+		return pg.ToItem(), nil
 	}
-	pg, err := policy_group_repo.PolicyGroup().Find(ctx, id)
+	dbID, err := strconv.ParseInt(id, 10, 64)
+	if err != nil {
+		return nil, fmt.Errorf("无效的权限组 ID: %s", id)
+	}
+	pg, err := policy_group_repo.PolicyGroup().Find(ctx, dbID)
 	if err != nil {
 		return nil, err
 	}
-	return pg.ToItem(false), nil
+	return pg.ToItem(), nil
 }
 
 func (s *policyGroupSvc) Create(ctx context.Context, pg *policy_group_entity.PolicyGroup) error {
@@ -88,8 +94,8 @@ func (s *policyGroupSvc) Create(ctx context.Context, pg *policy_group_entity.Pol
 }
 
 func (s *policyGroupSvc) Update(ctx context.Context, pg *policy_group_entity.PolicyGroup) error {
-	if policy_group_entity.IsBuiltinID(pg.ID) {
-		return errors.New("内置权限组不可修改")
+	if pg.ID <= 0 {
+		return errors.New("无效的权限组 ID")
 	}
 	if err := pg.Validate(); err != nil {
 		return err
@@ -98,14 +104,18 @@ func (s *policyGroupSvc) Update(ctx context.Context, pg *policy_group_entity.Pol
 	return policy_group_repo.PolicyGroup().Update(ctx, pg)
 }
 
-func (s *policyGroupSvc) Delete(ctx context.Context, id int64) error {
+func (s *policyGroupSvc) Delete(ctx context.Context, id string) error {
 	if policy_group_entity.IsBuiltinID(id) {
 		return errors.New("内置权限组不可删除")
 	}
-	return policy_group_repo.PolicyGroup().Delete(ctx, id)
+	dbID, err := strconv.ParseInt(id, 10, 64)
+	if err != nil {
+		return fmt.Errorf("无效的权限组 ID: %s", id)
+	}
+	return policy_group_repo.PolicyGroup().Delete(ctx, dbID)
 }
 
-func (s *policyGroupSvc) Copy(ctx context.Context, id int64, name string) (*policy_group_entity.PolicyGroup, error) {
+func (s *policyGroupSvc) Copy(ctx context.Context, id string, name string) (*policy_group_entity.PolicyGroup, error) {
 	var source *policy_group_entity.PolicyGroup
 	if policy_group_entity.IsBuiltinID(id) {
 		source = policy_group_entity.FindBuiltin(id)
@@ -113,8 +123,11 @@ func (s *policyGroupSvc) Copy(ctx context.Context, id int64, name string) (*poli
 			return nil, errors.New("内置权限组不存在")
 		}
 	} else {
-		var err error
-		source, err = policy_group_repo.PolicyGroup().Find(ctx, id)
+		dbID, err := strconv.ParseInt(id, 10, 64)
+		if err != nil {
+			return nil, fmt.Errorf("无效的权限组 ID: %s", id)
+		}
+		source, err = policy_group_repo.PolicyGroup().Find(ctx, dbID)
 		if err != nil {
 			return nil, err
 		}

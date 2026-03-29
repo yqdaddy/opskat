@@ -33,12 +33,17 @@ const tabs: { key: TabType; label: string }[] = [
 ];
 
 interface EditState {
-  id: number;
+  id: string;
   name: string;
   description: string;
   policyType: string;
   policy: Record<string, string[]>;
   readonly?: boolean;
+}
+
+/** 获取内置权限组的 i18n 短 ID（去掉 builtin: 前缀） */
+function builtinShortId(id: string): string {
+  return id.replace("builtin:", "");
 }
 
 function parsePolicyJSON(json: string, policyType: string): Record<string, string[]> {
@@ -75,8 +80,20 @@ export function PolicyGroupManager({ open, onOpenChange, onGroupsChanged, initia
   const [activeTab, setActiveTab] = useState<TabType>(initialTab || "command");
   const [groups, setGroups] = useState<policy_group_entity.PolicyGroupItem[]>([]);
   const [editState, setEditState] = useState<EditState | null>(null);
-  const [deleteConfirm, setDeleteConfirm] = useState<{ id: number; name: string } | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<{ id: string; name: string } | null>(null);
   const changedRef = useRef(false);
+
+  const displayName = useCallback(
+    (g: policy_group_entity.PolicyGroupItem) =>
+      g.builtin ? t(`asset.policyGroup.builtin.${builtinShortId(g.id)}.name`) : g.name,
+    [t]
+  );
+
+  const displayDesc = useCallback(
+    (g: policy_group_entity.PolicyGroupItem) =>
+      g.builtin ? t(`asset.policyGroup.builtin.${builtinShortId(g.id)}.desc`) : g.description,
+    [t]
+  );
 
   const fetchGroups = useCallback(async () => {
     try {
@@ -104,7 +121,7 @@ export function PolicyGroupManager({ open, onOpenChange, onGroupsChanged, initia
     onOpenChange(newOpen);
   };
 
-  const handleCopy = async (id: number) => {
+  const handleCopy = async (id: string) => {
     try {
       await CopyPolicyGroup(id, "");
       toast.success(t("asset.policyGroup.copySuccess"));
@@ -115,7 +132,7 @@ export function PolicyGroupManager({ open, onOpenChange, onGroupsChanged, initia
     }
   };
 
-  const handleDelete = async (id: number) => {
+  const handleDelete = async (id: string) => {
     try {
       await DeletePolicyGroup(id);
       toast.success(t("asset.policyGroup.deleteSuccess"));
@@ -129,7 +146,7 @@ export function PolicyGroupManager({ open, onOpenChange, onGroupsChanged, initia
 
   const handleCreate = () => {
     setEditState({
-      id: 0,
+      id: "",
       name: "",
       description: "",
       policyType: activeTab,
@@ -155,8 +172,8 @@ export function PolicyGroupManager({ open, onOpenChange, onGroupsChanged, initia
     }
     setEditState({
       id: g.id,
-      name: g.name,
-      description: g.description,
+      name: displayName(g),
+      description: displayDesc(g),
       policyType: g.policyType,
       policy: parsePolicyJSON(g.policy, g.policyType),
       readonly: true,
@@ -171,7 +188,7 @@ export function PolicyGroupManager({ open, onOpenChange, onGroupsChanged, initia
 
     try {
       const policyJSON = serializePolicy(editState.policy);
-      if (editState.id === 0) {
+      if (editState.id === "") {
         await CreatePolicyGroup(
           new policy_group_entity.PolicyGroup({
             name: editState.name,
@@ -184,7 +201,7 @@ export function PolicyGroupManager({ open, onOpenChange, onGroupsChanged, initia
       } else {
         await UpdatePolicyGroup(
           new policy_group_entity.PolicyGroup({
-            id: editState.id,
+            id: parseInt(editState.id),
             name: editState.name,
             description: editState.description,
             policyType: editState.policyType,
@@ -262,9 +279,9 @@ export function PolicyGroupManager({ open, onOpenChange, onGroupsChanged, initia
                     )}
                     <Lock className="h-3 w-3 text-muted-foreground shrink-0" />
                     <div className="flex-1 min-w-0">
-                      <div className="text-xs font-medium truncate">{g.name}</div>
-                      {g.description && (
-                        <div className="text-[10px] text-muted-foreground truncate">{g.description}</div>
+                      <div className="text-xs font-medium truncate">{displayName(g)}</div>
+                      {displayDesc(g) && (
+                        <div className="text-[10px] text-muted-foreground truncate">{displayDesc(g)}</div>
                       )}
                     </div>
                     <Button

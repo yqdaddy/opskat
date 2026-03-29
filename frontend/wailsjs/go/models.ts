@@ -1131,7 +1131,7 @@ export namespace policy_group_entity {
 	    }
 	}
 	export class PolicyGroupItem {
-	    id: number;
+	    id: string;
 	    name: string;
 	    description: string;
 	    policyType: string;

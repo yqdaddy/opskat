@@ -3,6 +3,8 @@ package policy_group_entity
 import (
 	"encoding/json"
 	"errors"
+	"strconv"
+	"strings"
 
 	"github.com/opskat/opskat/internal/model/entity/policy"
 )
@@ -14,7 +16,7 @@ const (
 	PolicyTypeRedis   = "redis"
 )
 
-// PolicyGroup 权限组实体
+// PolicyGroup 权限组实体（数据库）
 type PolicyGroup struct {
 	ID          int64  `gorm:"column:id;primaryKey;autoIncrement" json:"id"`
 	Name        string `gorm:"column:name;type:varchar(255);not null" json:"name"`
@@ -23,6 +25,9 @@ type PolicyGroup struct {
 	Policy      string `gorm:"column:policy;type:text;not null" json:"policy"`
 	Createtime  int64  `gorm:"column:createtime" json:"createtime"`
 	Updatetime  int64  `gorm:"column:updatetime" json:"updatetime"`
+
+	// 非数据库字段，仅内置组使用
+	BuiltinID string `gorm:"-" json:"-"`
 }
 
 // TableName GORM 表名
@@ -43,9 +48,9 @@ func (pg *PolicyGroup) Validate() error {
 	return nil
 }
 
-// PolicyGroupItem 返回给前端的权限组项，含 Builtin 标识
+// PolicyGroupItem 返回给前端的权限组项
 type PolicyGroupItem struct {
-	ID          int64  `json:"id"`
+	ID          string `json:"id"`
 	Name        string `json:"name"`
 	Description string `json:"description"`
 	PolicyType  string `json:"policyType"`
@@ -56,17 +61,22 @@ type PolicyGroupItem struct {
 }
 
 // ToItem 转为 PolicyGroupItem
-func (pg *PolicyGroup) ToItem(builtin bool) *PolicyGroupItem {
-	return &PolicyGroupItem{
-		ID:          pg.ID,
+func (pg *PolicyGroup) ToItem() *PolicyGroupItem {
+	item := &PolicyGroupItem{
 		Name:        pg.Name,
 		Description: pg.Description,
 		PolicyType:  pg.PolicyType,
 		Policy:      pg.Policy,
-		Builtin:     builtin,
 		Createtime:  pg.Createtime,
 		Updatetime:  pg.Updatetime,
 	}
+	if pg.BuiltinID != "" {
+		item.ID = pg.BuiltinID
+		item.Builtin = true
+	} else {
+		item.ID = strconv.FormatInt(pg.ID, 10)
+	}
+	return item
 }
 
 // --- 内置权限组 ---
@@ -84,9 +94,9 @@ func BuiltinGroups() []*PolicyGroup {
 	return []*PolicyGroup{
 		// SSH command 类型
 		{
-			ID:          policy.BuiltinLinuxReadOnly,
-			Name:        "Linux 常用只读",
-			Description: "常用 Linux 只读命令",
+			BuiltinID:   policy.BuiltinLinuxReadOnly,
+			Name:        "Linux Read-Only",
+			Description: "Common Linux read-only commands",
 			PolicyType:  PolicyTypeCommand,
 			Policy: mustMarshal(&policy.CommandPolicy{
 				AllowList: []string{
@@ -104,9 +114,9 @@ func BuiltinGroups() []*PolicyGroup {
 			}),
 		},
 		{
-			ID:          policy.BuiltinK8sReadOnly,
-			Name:        "Kubernetes 只读",
-			Description: "Kubernetes 只读操作命令",
+			BuiltinID:   policy.BuiltinK8sReadOnly,
+			Name:        "Kubernetes Read-Only",
+			Description: "Kubernetes read-only commands",
 			PolicyType:  PolicyTypeCommand,
 			Policy: mustMarshal(&policy.CommandPolicy{
 				AllowList: []string{
@@ -120,9 +130,9 @@ func BuiltinGroups() []*PolicyGroup {
 			}),
 		},
 		{
-			ID:          policy.BuiltinDockerReadOnly,
-			Name:        "Docker 只读",
-			Description: "Docker 只读操作命令",
+			BuiltinID:   policy.BuiltinDockerReadOnly,
+			Name:        "Docker Read-Only",
+			Description: "Docker read-only commands",
 			PolicyType:  PolicyTypeCommand,
 			Policy: mustMarshal(&policy.CommandPolicy{
 				AllowList: []string{
@@ -137,9 +147,9 @@ func BuiltinGroups() []*PolicyGroup {
 			}),
 		},
 		{
-			ID:          policy.BuiltinDangerousDeny,
-			Name:        "高危命令拒绝",
-			Description: "拒绝执行高危系统命令",
+			BuiltinID:   policy.BuiltinDangerousDeny,
+			Name:        "Dangerous Command Deny",
+			Description: "Deny dangerous system commands",
 			PolicyType:  PolicyTypeCommand,
 			Policy: mustMarshal(&policy.CommandPolicy{
 				DenyList: []string{
@@ -155,9 +165,9 @@ func BuiltinGroups() []*PolicyGroup {
 		},
 		// Database query 类型
 		{
-			ID:          policy.BuiltinSQLReadOnly,
-			Name:        "SQL 只读",
-			Description: "只允许查询类 SQL 语句",
+			BuiltinID:   policy.BuiltinSQLReadOnly,
+			Name:        "SQL Read-Only",
+			Description: "Allow query-only SQL statements",
 			PolicyType:  PolicyTypeQuery,
 			Policy: mustMarshal(&policy.QueryPolicy{
 				AllowTypes: []string{
@@ -166,9 +176,9 @@ func BuiltinGroups() []*PolicyGroup {
 			}),
 		},
 		{
-			ID:          policy.BuiltinSQLDangerousDeny,
-			Name:        "SQL 高危拒绝",
-			Description: "拒绝高危 SQL 操作",
+			BuiltinID:   policy.BuiltinSQLDangerousDeny,
+			Name:        "SQL Dangerous Deny",
+			Description: "Deny dangerous SQL operations",
 			PolicyType:  PolicyTypeQuery,
 			Policy: mustMarshal(&policy.QueryPolicy{
 				DenyTypes: []string{
@@ -185,9 +195,9 @@ func BuiltinGroups() []*PolicyGroup {
 		},
 		// Redis 类型
 		{
-			ID:          policy.BuiltinRedisReadOnly,
-			Name:        "Redis 只读",
-			Description: "只允许 Redis 只读命令",
+			BuiltinID:   policy.BuiltinRedisReadOnly,
+			Name:        "Redis Read-Only",
+			Description: "Allow Redis read-only commands",
 			PolicyType:  PolicyTypeRedis,
 			Policy: mustMarshal(&policy.RedisPolicy{
 				AllowList: []string{
@@ -202,9 +212,9 @@ func BuiltinGroups() []*PolicyGroup {
 			}),
 		},
 		{
-			ID:          policy.BuiltinRedisDangerousDeny,
-			Name:        "Redis 高危拒绝",
-			Description: "拒绝 Redis 高危命令",
+			BuiltinID:   policy.BuiltinRedisDangerousDeny,
+			Name:        "Redis Dangerous Deny",
+			Description: "Deny dangerous Redis commands",
 			PolicyType:  PolicyTypeRedis,
 			Policy: mustMarshal(&policy.RedisPolicy{
 				DenyList: []string{
@@ -221,21 +231,21 @@ func BuiltinGroups() []*PolicyGroup {
 }
 
 // builtinMap 内置组缓存
-var builtinMap map[int64]*PolicyGroup
+var builtinMap map[string]*PolicyGroup
 
 func init() {
-	builtinMap = make(map[int64]*PolicyGroup)
+	builtinMap = make(map[string]*PolicyGroup)
 	for _, pg := range BuiltinGroups() {
-		builtinMap[pg.ID] = pg
+		builtinMap[pg.BuiltinID] = pg
 	}
 }
 
 // FindBuiltin 按 ID 查找内置权限组
-func FindBuiltin(id int64) *PolicyGroup {
+func FindBuiltin(id string) *PolicyGroup {
 	return builtinMap[id]
 }
 
 // IsBuiltinID 检查 ID 是否为内置权限组
-func IsBuiltinID(id int64) bool {
-	return id < 0
+func IsBuiltinID(id string) bool {
+	return strings.HasPrefix(id, policy.BuiltinPrefix)
 }

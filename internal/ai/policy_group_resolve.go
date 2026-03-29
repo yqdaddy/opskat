@@ -3,6 +3,7 @@ package ai
 import (
 	"context"
 	"encoding/json"
+	"strconv"
 
 	"github.com/cago-frame/cago/pkg/logger"
 	"go.uber.org/zap"
@@ -13,7 +14,7 @@ import (
 )
 
 // resolveCommandGroups 解析引用的权限组，返回合并后的 allow/deny 规则
-func resolveCommandGroups(ctx context.Context, groupIDs []int64) (allow, deny []string) {
+func resolveCommandGroups(ctx context.Context, groupIDs []string) (allow, deny []string) {
 	if len(groupIDs) == 0 {
 		return
 	}
@@ -23,7 +24,7 @@ func resolveCommandGroups(ctx context.Context, groupIDs []int64) (allow, deny []
 		}
 		var p policy.CommandPolicy
 		if err := json.Unmarshal([]byte(pg.Policy), &p); err != nil {
-			logger.Default().Warn("unmarshal policy group command policy", zap.Int64("id", pg.ID), zap.Error(err))
+			logger.Default().Warn("unmarshal policy group command policy", zap.String("id", pg.BuiltinID), zap.Error(err))
 			continue
 		}
 		allow = append(allow, p.AllowList...)
@@ -33,7 +34,7 @@ func resolveCommandGroups(ctx context.Context, groupIDs []int64) (allow, deny []
 }
 
 // resolveQueryGroups 解析引用的 Query 权限组，返回合并后的规则
-func resolveQueryGroups(ctx context.Context, groupIDs []int64) (allowTypes, denyTypes, denyFlags []string) {
+func resolveQueryGroups(ctx context.Context, groupIDs []string) (allowTypes, denyTypes, denyFlags []string) {
 	if len(groupIDs) == 0 {
 		return
 	}
@@ -43,7 +44,7 @@ func resolveQueryGroups(ctx context.Context, groupIDs []int64) (allowTypes, deny
 		}
 		var p policy.QueryPolicy
 		if err := json.Unmarshal([]byte(pg.Policy), &p); err != nil {
-			logger.Default().Warn("unmarshal policy group query policy", zap.Int64("id", pg.ID), zap.Error(err))
+			logger.Default().Warn("unmarshal policy group query policy", zap.String("id", pg.BuiltinID), zap.Error(err))
 			continue
 		}
 		allowTypes = append(allowTypes, p.AllowTypes...)
@@ -54,7 +55,7 @@ func resolveQueryGroups(ctx context.Context, groupIDs []int64) (allowTypes, deny
 }
 
 // resolveRedisGroups 解析引用的 Redis 权限组，返回合并后的 allow/deny 规则
-func resolveRedisGroups(ctx context.Context, groupIDs []int64) (allow, deny []string) {
+func resolveRedisGroups(ctx context.Context, groupIDs []string) (allow, deny []string) {
 	if len(groupIDs) == 0 {
 		return
 	}
@@ -64,7 +65,7 @@ func resolveRedisGroups(ctx context.Context, groupIDs []int64) (allow, deny []st
 		}
 		var p policy.RedisPolicy
 		if err := json.Unmarshal([]byte(pg.Policy), &p); err != nil {
-			logger.Default().Warn("unmarshal policy group redis policy", zap.Int64("id", pg.ID), zap.Error(err))
+			logger.Default().Warn("unmarshal policy group redis policy", zap.String("id", pg.BuiltinID), zap.Error(err))
 			continue
 		}
 		allow = append(allow, p.AllowList...)
@@ -74,7 +75,7 @@ func resolveRedisGroups(ctx context.Context, groupIDs []int64) (allow, deny []st
 }
 
 // fetchPolicyGroups 按 ID 列表获取权限组（内置组从代码，用户组从 DB）
-func fetchPolicyGroups(ctx context.Context, ids []int64) []*policy_group_entity.PolicyGroup {
+func fetchPolicyGroups(ctx context.Context, ids []string) []*policy_group_entity.PolicyGroup {
 	var result []*policy_group_entity.PolicyGroup
 	var dbIDs []int64
 
@@ -84,7 +85,9 @@ func fetchPolicyGroups(ctx context.Context, ids []int64) []*policy_group_entity.
 				result = append(result, pg)
 			}
 		} else {
-			dbIDs = append(dbIDs, id)
+			if dbID, err := strconv.ParseInt(id, 10, 64); err == nil {
+				dbIDs = append(dbIDs, dbID)
+			}
 		}
 	}
 

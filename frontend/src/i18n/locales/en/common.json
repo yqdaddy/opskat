@@ -231,7 +231,17 @@
       "copySuccess": "Policy group copied",
       "deleteSuccess": "Policy group deleted",
       "deleteConfirmTitle": "Confirm Delete Policy Group",
-      "deleteConfirm": "Delete policy group \"{{name}}\"? This action cannot be undone."
+      "deleteConfirm": "Delete policy group \"{{name}}\"? This action cannot be undone.",
+      "builtin": {
+        "linux-readonly": { "name": "Linux Read-Only", "desc": "Common Linux read-only commands" },
+        "k8s-readonly": { "name": "Kubernetes Read-Only", "desc": "Kubernetes read-only commands" },
+        "docker-readonly": { "name": "Docker Read-Only", "desc": "Docker read-only commands" },
+        "dangerous-deny": { "name": "Dangerous Command Deny", "desc": "Deny dangerous system commands" },
+        "sql-readonly": { "name": "SQL Read-Only", "desc": "Allow query-only SQL statements" },
+        "sql-dangerous-deny": { "name": "SQL Dangerous Deny", "desc": "Deny dangerous SQL operations" },
+        "redis-readonly": { "name": "Redis Read-Only", "desc": "Allow Redis read-only commands" },
+        "redis-dangerous-deny": { "name": "Redis Dangerous Deny", "desc": "Deny dangerous Redis commands" }
+      }
     }
   },
   "sshKey": {
