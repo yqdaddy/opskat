@@ -96,6 +96,8 @@ export function ExportToGist(arg1:string,arg2:string,arg3:string,arg4:backup_svc
 
 export function FetchAIModels(arg1:string,arg2:string,arg3:string):Promise<Array<app.AIModelInfo>>;
 
+export function ForceUninstallExtension(arg1:string,arg2:boolean):Promise<void>;
+
 export function GenerateSSHKey(arg1:string,arg2:string,arg3:string,arg4:number):Promise<credential_entity.Credential>;
 
 export function GetActiveAIProvider():Promise<app.AIProviderInfo>;

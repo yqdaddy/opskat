@@ -14,6 +14,8 @@ Module: `github.com/opskat/opskat`
 ```bash
 make dev              # Wails dev mode with hot reload
 make install          # Install frontend deps (pnpm)
+make run              # Run the embedded production build (no hot reload)
+make clean            # Remove build/bin, frontend/dist, embedded opsctl, coverage files
 ```
 
 ### Build
@@ -26,7 +28,8 @@ make install-cli      # Install opsctl to GOPATH/bin
 
 ### Testing
 ```bash
-make test                              # All Go tests
+make test                              # Go tests (internal, cmd/opsctl, cmd/devserver, pkg)
+make test-cover                        # Coverage report → coverage.html, opens in browser
 go test ./internal/ai/...             # Single package
 go test ./internal/ai/ -run TestName  # Single test
 cd frontend && pnpm test              # Frontend tests (vitest)
@@ -35,15 +38,23 @@ cd frontend && pnpm test:watch        # Frontend tests in watch mode
 
 ### Linting & Formatting
 ```bash
-make lint             # golangci-lint (16 linters, 10m timeout)
+make lint             # golangci-lint (10m timeout, config in .golangci.yml)
 make lint-fix         # golangci-lint with auto-fix
 cd frontend && pnpm lint       # ESLint + Prettier
 cd frontend && pnpm lint:fix   # ESLint auto-fix
 ```
 
+### Extensions (DevServer)
+```bash
+make devserver EXT=<name>       # Run isolated dev server for one extension
+                                # Builds extension in ../extensions, loads its WASM + manifest
+make build-devserver-ui         # Rebuild embedded devserver UI (frontend/packages/devserver-ui)
+```
+DevServer refuses to start when `OPSKAT_ENV=production`. Extension source lives in a sibling repo at `../extensions/` (see reference memory).
+
 ### Plugin
 ```bash
-make install-skill    # Register Claude Code opsctl plugin
+make install-skill    # Register Claude Code opsctl plugin (symlinks plugin/ into ~/.claude)
 ```
 
 ## Architecture
@@ -53,19 +64,22 @@ make install-skill    # Register Claude Code opsctl plugin
 ```
 main.go (Wails entry)
   └─ internal/app/        App struct — Wails binding layer, all public methods exposed to frontend via IPC
-       ├─ internal/service/    Business logic (16 service packages: ssh_svc, sftp_svc, ai_provider_svc, etc.)
+       ├─ internal/service/    Business logic (15 service packages: ssh_svc, sftp_svc, ai_provider_svc, extension_svc, etc.)
        ├─ internal/repository/ Data access (12 repos with interface + impl pattern)
        └─ internal/model/      Domain entities
 ```
 
 **Key subsystems:**
-- `internal/ai/` — AI agent: provider abstraction (Anthropic/OpenAI), tool registry (41 tools), command policy checker, conversation runner, context compression, audit logging
+- `internal/ai/` — AI agent: provider abstraction (Anthropic/OpenAI), tool registry, command policy checker, conversation runner, context compression, audit logging
 - `internal/sshpool/` — SSH connection pool with Unix socket proxy for opsctl CLI
 - `internal/connpool/` — Database/Redis tunnel management
 - `internal/approval/` — Inter-process approval workflow (Unix socket between desktop app and opsctl)
 - `internal/bootstrap/` — App initialization: database, credentials, migrations, auth tokens
 - `internal/embedded/` — Embedded opsctl binary (build tag: `embed_opsctl`)
+- `pkg/extension/` — WASM extension runtime (wazero): manifest parsing, plugin lifecycle, host bridge (I/O, KV, file dialogs, action events), policy evaluation
+- `internal/service/extension_svc/` + `internal/app/app_extension.go` + `app_ext_host.go` — extension install/load/wiring into the desktop app
 - `cmd/opsctl/` — Standalone CLI tool for remote operations, designed for AI assistant integration
+- `cmd/devserver/` — Standalone HTTP dev server for a single extension (loads one WASM + manifest, proxies frontend HMR)
 
 **Repository pattern:** Each repo has an interface, a default singleton, and `Register()`/getter functions.
 
@@ -73,9 +87,11 @@ main.go (Wails entry)
 
 **Credential encryption:** Argon2id KDF + AES-256-GCM, master key in OS keychain.
 
+**Extension system:** Extensions are WASM modules loaded at runtime. Each extension declares tools in `manifest.json`. AI invokes extension tools via a **single `exec_tool` tool** (not individual tools per extension) — the handler at `internal/ai/tool_handler_ext.go` dispatches by `extension` + `tool` args, enforces the extension's policy type against asset policy groups, and calls `Plugin.CallTool`. Host capabilities exposed to WASM are defined by `HostProvider` in `pkg/extension/host.go` (I/O open/read/write, KV, asset config, file dialogs, logging, events).
+
 ### Frontend (React + TypeScript)
 
-Located in `frontend/`. Uses Vite 6 bundler, Tailwind CSS 4, shadcn/ui (Radix), Zustand 5 for state.
+Located in `frontend/` — a pnpm workspace monorepo. Root app consumes `@opskat/ui` (from `packages/ui`); `packages/devserver-ui` is embedded by `cmd/devserver`. Uses Vite 6 bundler, Tailwind CSS 4, shadcn/ui (Radix), Zustand 5 for state.
 
 **No React Router** — uses a custom tab-based navigation system (`tabStore`). Tab types: terminal, ai, query, page, info.
 

@@ -158,6 +158,10 @@ export function FetchAIModels(arg1, arg2, arg3) {
   return window['go']['app']['App']['FetchAIModels'](arg1, arg2, arg3);
 }
 
+export function ForceUninstallExtension(arg1, arg2) {
+  return window['go']['app']['App']['ForceUninstallExtension'](arg1, arg2);
+}
+
 export function GenerateSSHKey(arg1, arg2, arg3, arg4) {
   return window['go']['app']['App']['GenerateSSHKey'](arg1, arg2, arg3, arg4);
 }

@@ -547,6 +547,7 @@ export namespace asset_entity {
 	    CmdPolicy: string;
 	    SortOrder: number;
 	    sshTunnelId: number;
+	    extensionName?: string;
 	    Status: number;
 	    Createtime: number;
 	    Updatetime: number;
@@ -568,6 +569,7 @@ export namespace asset_entity {
 	        this.CmdPolicy = source["CmdPolicy"];
 	        this.SortOrder = source["SortOrder"];
 	        this.sshTunnelId = source["sshTunnelId"];
+	        this.extensionName = source["extensionName"];
 	        this.Status = source["Status"];
 	        this.Createtime = source["Createtime"];
 	        this.Updatetime = source["Updatetime"];
@@ -949,6 +951,69 @@ export namespace extension {
 		    return a;
 		}
 	}
+	export class HTTPCapability {
+	    allowlist: string[];
+	
+	    static createFrom(source: any = {}) {
+	        return new HTTPCapability(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.allowlist = source["allowlist"];
+	    }
+	}
+	export class FSCapability {
+	    read: string[];
+	    write: string[];
+	
+	    static createFrom(source: any = {}) {
+	        return new FSCapability(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.read = source["read"];
+	        this.write = source["write"];
+	    }
+	}
+	export class Capabilities {
+	    fs: FSCapability;
+	    http: HTTPCapability;
+	    credentials: string;
+	    tunnel: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new Capabilities(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.fs = this.convertValues(source["fs"], FSCapability);
+	        this.http = this.convertValues(source["http"], HTTPCapability);
+	        this.credentials = source["credentials"];
+	        this.tunnel = source["tunnel"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
 	export class PageDef {
 	    id: string;
 	    slot?: string;
@@ -1019,6 +1084,7 @@ export namespace extension {
 		    return a;
 		}
 	}
+	
 	export class I18nDesc {
 	    description: string;
 	
@@ -1183,6 +1249,8 @@ export namespace extension {
 	    version: string;
 	    icon: string;
 	    minAppVersion: string;
+	    hostABI: string;
+	    capabilities: Capabilities;
 	    i18n: ManifestI18n;
 	    backend: ManifestBackend;
 	    assetTypes: AssetTypeDef[];
@@ -1200,6 +1268,8 @@ export namespace extension {
 	        this.version = source["version"];
 	        this.icon = source["icon"];
 	        this.minAppVersion = source["minAppVersion"];
+	        this.hostABI = source["hostABI"];
+	        this.capabilities = this.convertValues(source["capabilities"], Capabilities);
 	        this.i18n = this.convertValues(source["i18n"], ManifestI18n);
 	        this.backend = this.convertValues(source["backend"], ManifestBackend);
 	        this.assetTypes = this.convertValues(source["assetTypes"], AssetTypeDef);
