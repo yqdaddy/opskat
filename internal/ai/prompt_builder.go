@@ -2,6 +2,7 @@ package ai
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 )
 
@@ -19,8 +20,25 @@ type AIContext struct {
 
 // PromptBuilder 动态构建 System Prompt
 type PromptBuilder struct {
-	language string
-	context  AIContext
+	language          string
+	context           AIContext
+	extensionSkillMDs map[string]string // extName → SKILL.md content
+}
+
+// SetExtensionSkillMDs sets all extension SKILL.md contents to inject.
+// Keys are extension names, values are the raw markdown.
+func (b *PromptBuilder) SetExtensionSkillMDs(mds map[string]string) {
+	b.extensionSkillMDs = mds
+}
+
+// SetExtensionSkillMD sets a single extension SKILL.md content.
+// Kept for backward compatibility — treats it as a single-entry map.
+func (b *PromptBuilder) SetExtensionSkillMD(md string) {
+	if md == "" {
+		b.extensionSkillMDs = nil
+		return
+	}
+	b.extensionSkillMDs = map[string]string{"extension": md}
 }
 
 // NewPromptBuilder 创建 PromptBuilder
@@ -54,6 +72,18 @@ func (b *PromptBuilder) Build() string {
 
 	// 6. 用户拒绝操作引导
 	parts = append(parts, b.buildUserDenialGuidance())
+
+	// 7. Extension tools guide
+	if len(b.extensionSkillMDs) > 0 {
+		names := make([]string, 0, len(b.extensionSkillMDs))
+		for name := range b.extensionSkillMDs {
+			names = append(names, name)
+		}
+		sort.Strings(names)
+		for _, name := range names {
+			parts = append(parts, fmt.Sprintf("## From extension: %s\n%s", name, b.extensionSkillMDs[name]))
+		}
+	}
 
 	return strings.Join(parts, "\n\n")
 }
