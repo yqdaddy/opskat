@@ -23,17 +23,18 @@ func (a *App) TestDatabaseConnection(configJSON string, plainPassword string) er
 	if err := json.Unmarshal([]byte(configJSON), &cfg); err != nil {
 		return fmt.Errorf("配置解析失败: %w", err)
 	}
+
+	ctx, cancel := context.WithTimeout(a.langCtx(), 10*time.Second)
+	defer cancel()
+
 	password := plainPassword
 	if password == "" {
 		var err error
-		password, err = credential_resolver.Default().ResolveDatabasePassword(a.langCtx(), &cfg)
+		password, err = credential_resolver.Default().ResolveDatabasePassword(ctx, &cfg)
 		if err != nil {
 			return fmt.Errorf("连接失败: %w", err)
 		}
 	}
-
-	ctx, cancel := context.WithTimeout(a.langCtx(), 10*time.Second)
-	defer cancel()
 
 	// 测试连接场景没有持久化的 Asset，使用零值让 backward compat 生效
 	testAsset := &asset_entity.Asset{}
@@ -61,17 +62,18 @@ func (a *App) TestRedisConnection(configJSON string, plainPassword string) error
 	if err := json.Unmarshal([]byte(configJSON), &cfg); err != nil {
 		return fmt.Errorf("配置解析失败: %w", err)
 	}
+
+	ctx, cancel := context.WithTimeout(a.langCtx(), 10*time.Second)
+	defer cancel()
+
 	password := plainPassword
 	if password == "" {
 		var err error
-		password, err = credential_resolver.Default().ResolveRedisPassword(a.langCtx(), &cfg)
+		password, err = credential_resolver.Default().ResolveRedisPassword(ctx, &cfg)
 		if err != nil {
 			return fmt.Errorf("连接失败: %w", err)
 		}
 	}
-
-	ctx, cancel := context.WithTimeout(a.langCtx(), 10*time.Second)
-	defer cancel()
 
 	// 测试连接场景没有持久化的 Asset，使用零值让 backward compat 生效
 	testAsset := &asset_entity.Asset{}

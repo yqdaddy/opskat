@@ -44,22 +44,7 @@ func DialDatabase(ctx context.Context, asset *asset_entity.Asset, cfg *asset_ent
 		return nil, nil, err
 	}
 
-	// 连接级只读
-	if cfg.ReadOnly {
-		if roErr := setReadOnly(db, cfg.Driver); roErr != nil {
-			if err := db.Close(); err != nil {
-				logger.Default().Warn("close db", zap.Error(err))
-			}
-			if tunnel != nil {
-				if err := tunnel.Close(); err != nil {
-					logger.Default().Warn("close ssh tunnel", zap.Error(err))
-				}
-			}
-			return nil, nil, fmt.Errorf("设置只读模式失败: %w", roErr)
-		}
-	}
-
-	// 测试连接
+	// 测试连接（必须在 setReadOnly 之前，确保连接性检查受 ctx 超时保护）
 	if pingErr := db.PingContext(ctx); pingErr != nil {
 		if err := db.Close(); err != nil {
 			logger.Default().Warn("close db", zap.Error(err))
@@ -72,6 +57,26 @@ func DialDatabase(ctx context.Context, asset *asset_entity.Asset, cfg *asset_ent
 		return nil, nil, fmt.Errorf("数据库连接失败: %w", pingErr)
 	}
 
+	// 连接级只读
+	if cfg.ReadOnly {
+		if roErr := setReadOnly(ctx, db, cfg.Driver); roErr != nil {
+			if err := db.Close(); err != nil {
+				logger.Default().Warn("close db", zap.Error(err))
+			}
+			if tunnel != nil {
+				if err := tunnel.Close(); err != nil {
+					logger.Default().Warn("close ssh tunnel", zap.Error(err))
+				}
+			}
+			return nil, nil, fmt.Errorf("设置只读模式失败: %w", roErr)
+		}
+	}
+
+	// 直连时 tunnel 为 *SSHTunnel 的 nil，直接返回会变成 typed-nil 接口，
+	// 调用方 `if closer != nil` 会误判为真并在 Close() 里 nil deref panic。
+	if tunnel == nil {
+		return db, nil, nil
+	}
 	return db, tunnel, nil
 }
 
@@ -152,13 +157,13 @@ func buildDSN(cfg *asset_entity.DatabaseConfig, password string) (driverName str
 	}
 }
 
-func setReadOnly(db *sql.DB, driver asset_entity.DatabaseDriver) error {
+func setReadOnly(ctx context.Context, db *sql.DB, driver asset_entity.DatabaseDriver) error {
 	switch driver {
 	case asset_entity.DriverMySQL:
-		_, err := db.Exec("SET SESSION TRANSACTION READ ONLY")
+		_, err := db.ExecContext(ctx, "SET SESSION TRANSACTION READ ONLY")
 		return err
 	case asset_entity.DriverPostgreSQL:
-		_, err := db.Exec("SET default_transaction_read_only = on")
+		_, err := db.ExecContext(ctx, "SET default_transaction_read_only = on")
 		return err
 	}
 	return nil
