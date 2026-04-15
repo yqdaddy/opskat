@@ -8,9 +8,9 @@ import (
 	"testing"
 
 	"github.com/opskat/opskat/internal/model/entity/credential_entity"
-	gossh "golang.org/x/crypto/ssh"
 	. "github.com/smartystreets/goconvey/convey"
 	"github.com/stretchr/testify/assert"
+	gossh "golang.org/x/crypto/ssh"
 )
 
 // TestPassphraseReEncrypt 测试 passphrase 重新加密的核心逻辑

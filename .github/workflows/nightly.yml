@@ -40,6 +40,7 @@ jobs:
     outputs:
       version: ${{ steps.ver.outputs.version }}
       sha: ${{ steps.ver.outputs.sha }}
+      skip: ${{ steps.ver.outputs.skip }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -48,8 +49,19 @@ jobs:
 
       - name: Compute version
         id: ver
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           SHA=$(git rev-parse HEAD)
+          # 对比上一个 nightly release 的 commit，如果一致则跳过构建
+          PREV_SHA=$(gh release view nightly --json targetCommitish --jq '.targetCommitish' 2>/dev/null || echo "")
+          if [ -n "$PREV_SHA" ] && [ "$PREV_SHA" = "$SHA" ]; then
+            echo "No new commits since last nightly ($PREV_SHA), skipping build."
+            echo "skip=true" >> $GITHUB_OUTPUT
+            echo "sha=${SHA}" >> $GITHUB_OUTPUT
+            echo "version=" >> $GITHUB_OUTPUT
+            exit 0
+          fi
           # 获取最新版本标签（包含预发布版本）
           LATEST_TAG=$(git tag --sort=-v:refname | grep -E '^v[0-9]' | head -1)
           if [ -z "$LATEST_TAG" ]; then
@@ -65,13 +77,14 @@ jobs:
             # 稳定版本: v1.0.0 -> v1.0.0-nightly.20260325
             VERSION="v${BASE_VERSION}-nightly.${DATE}"
           fi
+          echo "skip=false" >> $GITHUB_OUTPUT
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
           echo "sha=${SHA}" >> $GITHUB_OUTPUT
 
   build-desktop:
     name: Desktop (${{ matrix.platform }})
     needs: [prepare]
-    if: ${{ always() && !failure() && !cancelled() }}
+    if: ${{ always() && !failure() && !cancelled() && needs.prepare.outputs.skip != 'true' }}
     runs-on: ${{ matrix.os }}
     env:
       VERSION: ${{ needs.prepare.outputs.version }}
@@ -269,7 +282,7 @@ jobs:
   release:
     name: Update Nightly Release
     needs: [prepare, build-desktop]
-    if: ${{ always() && !failure() && !cancelled() }}
+    if: ${{ always() && !failure() && !cancelled() && needs.prepare.outputs.skip != 'true' }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
