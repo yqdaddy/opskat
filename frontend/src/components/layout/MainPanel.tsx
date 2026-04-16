@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useRef } from "react";
+import { createContext, useContext, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import {
   X,
@@ -74,9 +74,21 @@ interface TabItemProps {
   onClick: () => void;
   onClose: () => void;
   extra?: React.ReactNode;
+  indicatorColor?: string;
 }
 
-function TabItem({ tabKey, icon: Icon, iconStyle, label, title, isActive, onClick, onClose, extra }: TabItemProps) {
+function TabItem({
+  tabKey,
+  icon: Icon,
+  iconStyle,
+  label,
+  title,
+  isActive,
+  onClick,
+  onClose,
+  extra,
+  indicatorColor,
+}: TabItemProps) {
   const { t } = useTranslation();
   const { tabs, dragKeyRef, reorder, moveTo } = useContext(TabBarContext);
   const noTabStyle = { "--wails-draggable": "no-drag" } as React.CSSProperties;
@@ -85,10 +97,11 @@ function TabItem({ tabKey, icon: Icon, iconStyle, label, title, isActive, onClic
 
   return (
     <ContextMenu>
-      <ContextMenuTrigger>
+      <ContextMenuTrigger className="contents">
         <div
           className={cn(
-            "relative flex items-center gap-1.5 px-3 py-2 text-sm shrink-0 cursor-pointer transition-colors duration-150",
+            "relative flex items-center py-2 text-sm cursor-pointer select-none transition-colors duration-150",
+            "flex-1 basis-0 min-w-0 gap-1.5 px-3",
             isActive ? "text-foreground" : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
           )}
           style={noTabStyle}
@@ -115,10 +128,10 @@ function TabItem({ tabKey, icon: Icon, iconStyle, label, title, isActive, onClic
           }}
         >
           <Icon className="h-3.5 w-3.5 shrink-0" style={iconStyle} />
-          <span className="max-w-24 truncate">{label}</span>
+          <span className="truncate min-w-0">{label}</span>
           {extra}
           <button
-            className="ml-1.5 rounded-sm p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors duration-150"
+            className="ml-auto shrink-0 rounded-sm p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors duration-150"
             onClick={(e) => {
               e.stopPropagation();
               onClose();
@@ -126,7 +139,12 @@ function TabItem({ tabKey, icon: Icon, iconStyle, label, title, isActive, onClic
           >
             <X className="h-3 w-3" />
           </button>
-          {isActive && <span className="absolute bottom-0 left-1 right-1 h-0.5 rounded-full bg-primary" />}
+          {(isActive || indicatorColor) && (
+            <span
+              className={cn("absolute bottom-0 left-1 right-1 h-0.5 rounded-full", !indicatorColor && "bg-primary")}
+              style={indicatorColor ? { backgroundColor: indicatorColor } : undefined}
+            />
+          )}
         </div>
       </ContextMenuTrigger>
       <ContextMenuContent>
@@ -190,26 +208,6 @@ export function MainPanel({ onEditAsset, onDeleteAsset, onConnectAsset }: MainPa
   const { fileManagerOpenTabs, fileManagerWidth, setFileManagerWidth } = useSFTPStore();
 
   const dragKeyRef = useRef<string | null>(null);
-  const tabBarRef = useRef<HTMLDivElement>(null);
-  const wheelListenerRef = useRef<((e: WheelEvent) => void) | null>(null);
-
-  const tabBarCallbackRef = useCallback((el: HTMLDivElement | null) => {
-    if (tabBarRef.current && wheelListenerRef.current) {
-      tabBarRef.current.removeEventListener("wheel", wheelListenerRef.current);
-      wheelListenerRef.current = null;
-    }
-    tabBarRef.current = el;
-    if (el) {
-      const onWheel = (e: WheelEvent) => {
-        if (e.deltaY !== 0) {
-          e.preventDefault();
-          el.scrollLeft += e.deltaY;
-        }
-      };
-      wheelListenerRef.current = onWheel;
-      el.addEventListener("wheel", onWheel, { passive: false });
-    }
-  }, []);
 
   const activeTab = tabs.find((tab) => tab.id === activeTabId) ?? null;
   const hasTabs = tabs.length > 0;
@@ -249,6 +247,7 @@ export function MainPanel({ onEditAsset, onDeleteAsset, onConnectAsset }: MainPa
             onClick={() => activateTab(tab.id)}
             onClose={() => closeTab(tab.id)}
             extra={allDisconnected ? <span className="h-1.5 w-1.5 rounded-full bg-destructive shrink-0" /> : undefined}
+            indicatorColor={iconStyle?.color}
           />
         );
       }
@@ -280,6 +279,7 @@ export function MainPanel({ onEditAsset, onDeleteAsset, onConnectAsset }: MainPa
             isActive={isActive}
             onClick={() => activateTab(tab.id)}
             onClose={() => closeTab(tab.id)}
+            indicatorColor={iconStyle?.color}
           />
         );
       }
@@ -313,6 +313,7 @@ export function MainPanel({ onEditAsset, onDeleteAsset, onConnectAsset }: MainPa
             isActive={isActive}
             onClick={() => activateTab(tab.id)}
             onClose={() => closeTab(tab.id)}
+            indicatorColor={iconStyle?.color}
           />
         );
       }
@@ -331,6 +332,7 @@ export function MainPanel({ onEditAsset, onDeleteAsset, onConnectAsset }: MainPa
             isActive={isActive}
             onClick={() => activateTab(tab.id)}
             onClose={() => closeTab(tab.id)}
+            indicatorColor={iconStyle?.color}
           />
         );
       }
@@ -445,8 +447,7 @@ export function MainPanel({ onEditAsset, onDeleteAsset, onConnectAsset }: MainPa
       {hasTabs && (
         <TabBarContext.Provider value={tabBarCtx}>
           <div
-            ref={tabBarCallbackRef}
-            className={`flex items-center border-b overflow-x-auto bg-background ${isFullscreen ? "pt-2" : "pt-10"}`}
+            className={`flex items-center border-b overflow-hidden bg-background ${isFullscreen ? "pt-2" : "pt-10"}`}
             style={{ "--wails-draggable": "drag" } as React.CSSProperties}
           >
             {tabs.map((tab) => renderTabItem(tab))}
