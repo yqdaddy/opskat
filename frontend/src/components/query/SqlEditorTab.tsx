@@ -1,8 +1,9 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import { useTranslation } from "react-i18next";
-import { Play, Loader2, History } from "lucide-react";
+import { Play, Loader2, History, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from "lucide-react";
 import {
   Button,
+  Input,
   Select,
   SelectContent,
   SelectItem,
@@ -15,7 +16,7 @@ import {
 } from "@opskat/ui";
 import { useQueryStore } from "@/stores/queryStore";
 import { useTabStore, type QueryTabMeta } from "@/stores/tabStore";
-import { ExecuteSQL } from "../../../wailsjs/go/app/App";
+import { ExecuteSQLPaged } from "../../../wailsjs/go/app/App";
 import { QueryResultTable } from "./QueryResultTable";
 
 interface SqlEditorTabProps {
@@ -23,12 +24,16 @@ interface SqlEditorTabProps {
   innerTabId: string;
 }
 
-interface SQLResult {
+interface SQLPagedResult {
   columns?: string[];
   rows?: Record<string, unknown>[];
   count?: number;
+  total_count?: number;
   affected_rows?: number;
 }
+
+const PAGE_SIZES = [50, 100, 200, 500];
+const DEFAULT_PAGE_SIZE = 100;
 
 export function SqlEditorTab({ tabId, innerTabId }: SqlEditorTabProps) {
   const { t } = useTranslation();
@@ -50,12 +55,22 @@ export function SqlEditorTab({ tabId, innerTabId }: SqlEditorTabProps) {
   const [selectedDb, setSelectedDb] = useState(persistedDb || queryMeta?.defaultDatabase || "");
   const [columns, setColumns] = useState<string[]>([]);
   const [rows, setRows] = useState<Record<string, unknown>[]>([]);
+  const [totalRows, setTotalRows] = useState<number | null>(null);
   const [affectedRows, setAffectedRows] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showDangerConfirm, setShowDangerConfirm] = useState(false);
   const [sqlHistory, setSqlHistory] = useState<string[]>([]);
   const [showHistory, setShowHistory] = useState(false);
+
+  // Pagination state
+  const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
+  const [pageInput, setPageInput] = useState("1");
+  // Store the last executed SQL for pagination
+  const [lastExecSql, setLastExecSql] = useState("");
+
+  const totalPages = totalRows != null ? Math.max(1, Math.ceil(totalRows / pageSize)) : null;
 
   // Set default database when databases load
   useEffect(() => {
@@ -72,6 +87,11 @@ export function SqlEditorTab({ tabId, innerTabId }: SqlEditorTabProps) {
   useEffect(() => {
     updateInnerTab(tabId, innerTabId, { selectedDb });
   }, [selectedDb, tabId, innerTabId, updateInnerTab]);
+
+  // Sync page input
+  useEffect(() => {
+    setPageInput(String(page + 1));
+  }, [page]);
 
   const isDangerousSQL = useCallback((text: string) => {
     const upper = text.toUpperCase().replace(/\s+/g, " ").trim();
@@ -90,6 +110,40 @@ export function SqlEditorTab({ tabId, innerTabId }: SqlEditorTabProps) {
     return sql.trim();
   }, [sql]);
 
+  const fetchPage = useCallback(
+    async (execSql: string, pageNum: number) => {
+      if (!execSql || !assetId) return;
+
+      setLoading(true);
+      setError(null);
+
+      try {
+        const result = await ExecuteSQLPaged(assetId, execSql, selectedDb, pageNum, pageSize);
+        const parsed: SQLPagedResult = JSON.parse(result);
+
+        if (parsed.affected_rows !== undefined) {
+          setAffectedRows(parsed.affected_rows);
+          setColumns([]);
+          setRows([]);
+          setTotalRows(null);
+        } else {
+          setAffectedRows(null);
+          setColumns(parsed.columns || []);
+          setRows(parsed.rows || []);
+          setTotalRows(parsed.total_count ?? null);
+        }
+      } catch (e) {
+        setError(String(e));
+        setColumns([]);
+        setRows([]);
+        setTotalRows(null);
+      } finally {
+        setLoading(false);
+      }
+    },
+    [assetId, selectedDb, pageSize]
+  );
+
   const doExecute = useCallback(async () => {
     const execSql = getExecutableSQL();
     if (!execSql || !assetId) return;
@@ -97,28 +151,27 @@ export function SqlEditorTab({ tabId, innerTabId }: SqlEditorTabProps) {
     // Record to history (dedup, max 30)
     setSqlHistory((prev) => [execSql, ...prev.filter((s) => s !== execSql)].slice(0, 30));
 
-    setLoading(true);
-    setError(null);
-    setAffectedRows(null);
-    setColumns([]);
-    setRows([]);
+    setLastExecSql(execSql);
+    setPage(0);
+    await fetchPage(execSql, 0);
+  }, [getExecutableSQL, assetId, fetchPage]);
 
-    try {
-      const result = await ExecuteSQL(assetId, execSql, selectedDb);
-      const parsed: SQLResult = JSON.parse(result);
-
-      if (parsed.affected_rows !== undefined) {
-        setAffectedRows(parsed.affected_rows);
-      } else {
-        setColumns(parsed.columns || []);
-        setRows(parsed.rows || []);
-      }
-    } catch (e) {
-      setError(String(e));
-    } finally {
-      setLoading(false);
+  // Re-fetch when page changes (but not on initial execute)
+  useEffect(() => {
+    if (lastExecSql && page > 0) {
+      fetchPage(lastExecSql, page);
     }
-  }, [getExecutableSQL, assetId, selectedDb]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page]);
+
+  // Re-fetch from page 0 when pageSize changes (only if we have a previous query)
+  useEffect(() => {
+    if (lastExecSql) {
+      setPage(0);
+      fetchPage(lastExecSql, 0);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pageSize]);
 
   const execute = useCallback(() => {
     const execSql = getExecutableSQL();
@@ -152,6 +205,20 @@ export function SqlEditorTab({ tabId, innerTabId }: SqlEditorTabProps) {
     },
     [execute, sql]
   );
+
+  const handlePageInputConfirm = useCallback(() => {
+    const num = parseInt(pageInput, 10);
+    if (isNaN(num) || num < 1) {
+      setPageInput(String(page + 1));
+      return;
+    }
+    const target = totalPages ? Math.min(num, totalPages) - 1 : num - 1;
+    setPage(target);
+  }, [pageInput, page, totalPages]);
+
+  const hasNext = totalPages != null ? page < totalPages - 1 : rows.length === pageSize;
+  const hasPrev = page > 0;
+  const showPagination = columns.length > 0 && !loading && !error && lastExecSql;
 
   return (
     <div className="flex flex-col h-full">
@@ -229,12 +296,101 @@ export function SqlEditorTab({ tabId, innerTabId }: SqlEditorTabProps) {
             {t("query.affectedRows")}: {affectedRows}
           </div>
         )}
-        {columns.length > 0 && !loading && !error && (
-          <div className="px-3 py-1.5 text-xs text-muted-foreground border-b border-border bg-muted/30">
-            {t("query.rows", { count: rows.length })}
+        {showPagination && (
+          <div className="flex items-center gap-2 px-3 py-1.5 border-b border-border bg-muted/30 shrink-0">
+            {totalRows != null && (
+              <span className="text-xs text-muted-foreground">{t("query.totalRows", { count: totalRows })}</span>
+            )}
+            <div className="ml-auto flex items-center gap-1">
+              {/* Page size selector */}
+              <Select
+                value={String(pageSize)}
+                onValueChange={(v) => {
+                  setPageSize(Number(v));
+                }}
+              >
+                <SelectTrigger size="sm" className="h-6 w-[80px] text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {PAGE_SIZES.map((s) => (
+                    <SelectItem key={s} value={String(s)} className="text-xs">
+                      {t("query.perPage", { count: s })}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              {/* First page */}
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-6 w-6"
+                disabled={!hasPrev || loading}
+                onClick={() => setPage(0)}
+                title={t("query.firstPage")}
+              >
+                <ChevronsLeft className="h-3.5 w-3.5" />
+              </Button>
+              {/* Previous page */}
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-6 w-6"
+                disabled={!hasPrev || loading}
+                onClick={() => setPage((p) => p - 1)}
+                title={t("query.prevPage")}
+              >
+                <ChevronLeft className="h-3.5 w-3.5" />
+              </Button>
+              {/* Page input */}
+              <Input
+                className="h-6 w-[48px] text-xs text-center px-1"
+                value={pageInput}
+                onChange={(e) => setPageInput(e.target.value)}
+                onBlur={handlePageInputConfirm}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") handlePageInputConfirm();
+                }}
+              />
+              {totalPages != null && (
+                <span className="text-xs text-muted-foreground whitespace-nowrap">/ {totalPages}</span>
+              )}
+              {/* Next page */}
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-6 w-6"
+                disabled={!hasNext || loading}
+                onClick={() => setPage((p) => p + 1)}
+                title={t("query.nextPage")}
+              >
+                <ChevronRight className="h-3.5 w-3.5" />
+              </Button>
+              {/* Last page */}
+              {totalPages != null && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-6 w-6"
+                  disabled={!hasNext || loading}
+                  onClick={() => setPage(totalPages - 1)}
+                  title={t("query.lastPage")}
+                >
+                  <ChevronsRight className="h-3.5 w-3.5" />
+                </Button>
+              )}
+            </div>
           </div>
         )}
-        <QueryResultTable columns={columns} rows={rows} loading={loading} error={error ?? undefined} showRowNumber />
+        <QueryResultTable
+          columns={columns}
+          rows={rows}
+          loading={loading}
+          error={error ?? undefined}
+          showRowNumber
+          rowNumberOffset={page * pageSize}
+        />
       </div>
 
       {/* Dangerous SQL confirmation */}

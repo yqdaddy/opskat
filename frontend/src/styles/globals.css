@@ -152,6 +152,14 @@
   ::selection {
     background: oklch(0.63 0.20 260 / 30%);
   }
+
+  /* Query table: always-visible scrollbar with subtle track */
+  .query-table-scroll::-webkit-scrollbar-track {
+    background: oklch(0.5 0.01 250 / 6%);
+  }
+  .dark .query-table-scroll::-webkit-scrollbar-track {
+    background: oklch(0.7 0.01 250 / 5%);
+  }
 }
 
 @layer base {

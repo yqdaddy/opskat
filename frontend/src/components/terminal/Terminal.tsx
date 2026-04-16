@@ -5,7 +5,7 @@ import { SearchAddon } from "@xterm/addon-search";
 import "@xterm/xterm/css/xterm.css";
 import { WriteSSH, ResizeSSH } from "../../../wailsjs/go/app/App";
 import { EventsOn, EventsOff } from "../../../wailsjs/runtime/runtime";
-import { useShortcutStore, matchShortcut } from "@/stores/shortcutStore";
+import { useShortcutStore, matchShortcut, formatBinding } from "@/stores/shortcutStore";
 import { useTerminalStore } from "@/stores/terminalStore";
 import { useTerminalThemeStore, toXtermTheme } from "@/stores/terminalThemeStore";
 import { builtinThemes, defaultLightTheme, defaultDarkTheme } from "@/data/terminalThemes";
@@ -42,6 +42,7 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
   const activeRef = useRef(active);
   const [showSearch, setShowSearch] = useState(false);
   const [hasSelection, setHasSelection] = useState(false);
+  const shortcuts = useShortcutStore((s) => s.shortcuts);
   const fontSize = useTerminalThemeStore((s) => s.fontSize);
   const selectedThemeId = useTerminalThemeStore((s) => s.selectedThemeId);
   const customThemes = useTerminalThemeStore((s) => s.customThemes);
@@ -239,9 +240,11 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
           <ContextMenuSeparator />
           <ContextMenuItem onClick={() => splitPane(tabId, "horizontal")} disabled={!paneConnected}>
             {t("ssh.session.splitH")}
+            <ContextMenuShortcut>{formatBinding(shortcuts["split.horizontal"])}</ContextMenuShortcut>
           </ContextMenuItem>
           <ContextMenuItem onClick={() => splitPane(tabId, "vertical")} disabled={!paneConnected}>
             {t("ssh.session.splitV")}
+            <ContextMenuShortcut>{formatBinding(shortcuts["split.vertical"])}</ContextMenuShortcut>
           </ContextMenuItem>
           <ContextMenuSeparator />
           <ContextMenuItem onClick={() => toggleFileManager(tabId)}>{t("ssh.contextMenu.sftp")}</ContextMenuItem>
@@ -252,6 +255,7 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
           </ContextMenuItem>
           <ContextMenuItem onClick={() => closeTab(tabId)} variant="destructive">
             {t("ssh.contextMenu.closeTab")}
+            <ContextMenuShortcut>{formatBinding(shortcuts["tab.close"])}</ContextMenuShortcut>
           </ContextMenuItem>
         </ContextMenuContent>
       </ContextMenu>

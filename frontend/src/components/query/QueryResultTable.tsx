@@ -2,7 +2,6 @@ import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { createPortal } from "react-dom";
 import { Loader2, Copy, ArrowUp, ArrowDown, ArrowUpDown } from "lucide-react";
-import { useVirtualizer } from "@tanstack/react-virtual";
 import { toast } from "sonner";
 
 export interface CellEdit {
@@ -40,8 +39,6 @@ function compareValues(a: unknown, b: unknown): number {
   return String(a).localeCompare(String(b));
 }
 
-const ROW_HEIGHT = 28;
-
 export function QueryResultTable({
   columns,
   rows,
@@ -57,20 +54,23 @@ export function QueryResultTable({
 
   const [editingCell, setEditingCell] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-  const scrollRef = useRef<HTMLDivElement>(null);
 
   // Sort state
   const [sortCol, setSortCol] = useState<string | null>(null);
   const [sortDir, setSortDir] = useState<SortDir>(null);
 
+  // Column resize state
+  const [colWidths, setColWidths] = useState<Record<string, number>>({});
+
   // Context menu state
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; value: unknown } | null>(null);
   const ctxMenuRef = useRef<HTMLDivElement>(null);
 
-  // Reset sort when columns change
+  // Reset sort and column widths when columns change
   useEffect(() => {
     setSortCol(null);
     setSortDir(null);
+    setColWidths({});
   }, [columns]);
 
   // Sorted row indices (sort on the original indices to preserve edit mapping)
@@ -98,13 +98,31 @@ export function QueryResultTable({
     [sortCol, sortDir]
   );
 
-  // eslint-disable-next-line react-hooks/incompatible-library
-  const virtualizer = useVirtualizer({
-    count: sortedIndices.length,
-    getScrollElement: () => scrollRef.current,
-    estimateSize: () => ROW_HEIGHT,
-    overscan: 30,
-  });
+  // Column resize handler
+  const handleResizeStart = useCallback((e: React.MouseEvent, col: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const startX = e.clientX;
+    const th = (e.target as HTMLElement).closest("th")!;
+    const startWidth = th.offsetWidth;
+
+    const onMouseMove = (me: MouseEvent) => {
+      const newWidth = Math.max(50, startWidth + me.clientX - startX);
+      setColWidths((prev) => ({ ...prev, [col]: newWidth }));
+    };
+
+    const onMouseUp = () => {
+      document.removeEventListener("mousemove", onMouseMove);
+      document.removeEventListener("mouseup", onMouseUp);
+      document.body.style.removeProperty("cursor");
+      document.body.style.removeProperty("user-select");
+    };
+
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+    document.addEventListener("mousemove", onMouseMove);
+    document.addEventListener("mouseup", onMouseUp);
+  }, []);
 
   // Focus input when editing starts
   useEffect(() => {
@@ -186,10 +204,9 @@ export function QueryResultTable({
 
   return (
     <div className="flex-1 min-h-0 flex flex-col">
-      {/* Sticky header */}
-      <div className="shrink-0 overflow-hidden border-b border-border">
-        <table className="w-full border-collapse text-xs font-mono table-fixed">
-          <thead className="bg-muted">
+      <div className="flex-1 overflow-auto min-h-0 query-table-scroll">
+        <table className="border-collapse text-xs font-mono">
+          <thead className="bg-muted sticky top-0 z-10">
             <tr>
               {showRowNumber && (
                 <th className="border border-border px-2 py-1.5 text-center font-semibold text-muted-foreground whitespace-nowrap w-[50px]">
@@ -198,14 +215,16 @@ export function QueryResultTable({
               )}
               {columns.map((col) => {
                 const isSorted = sortCol === col;
+                const width = colWidths[col];
                 return (
                   <th
                     key={col}
-                    className="border border-border px-2 py-1.5 text-left font-semibold text-muted-foreground whitespace-nowrap cursor-pointer hover:bg-accent/50 select-none"
+                    className="relative border border-border px-2 py-1.5 text-left font-semibold text-muted-foreground whitespace-nowrap select-none"
+                    style={width ? { width: `${width}px`, minWidth: `${width}px` } : undefined}
                     onClick={() => !editable && toggleSort(col)}
                     title={editable ? col : t("query.sortColumn")}
                   >
-                    <span className="inline-flex items-center gap-1">
+                    <span className={`inline-flex items-center gap-1 ${!editable ? "cursor-pointer" : ""}`}>
                       {col}
                       {!editable &&
                         (isSorted && sortDir === "asc" ? (
@@ -216,90 +235,80 @@ export function QueryResultTable({
                           <ArrowUpDown className="h-3 w-3 opacity-0 group-hover:opacity-30" />
                         ))}
                     </span>
+                    {/* Resize handle */}
+                    <div
+                      className="absolute right-0 top-0 bottom-0 w-[3px] cursor-col-resize hover:bg-primary/40 z-20"
+                      onMouseDown={(e) => handleResizeStart(e, col)}
+                      onClick={(e) => e.stopPropagation()}
+                    />
                   </th>
                 );
               })}
             </tr>
           </thead>
-        </table>
-      </div>
+          <tbody>
+            {sortedIndices.map((origIdx, idx) => {
+              const row = rows[origIdx];
+              return (
+                <tr key={origIdx} className={idx % 2 === 0 ? "bg-background" : "bg-muted/40"}>
+                  {showRowNumber && (
+                    <td className="border border-border px-2 py-1 text-center text-muted-foreground whitespace-nowrap w-[50px]">
+                      {rowNumberOffset + origIdx + 1}
+                    </td>
+                  )}
+                  {columns.map((col) => {
+                    const ck = cellKey(origIdx, col);
+                    const isEdited = edits?.has(ck);
+                    const displayValue = isEdited ? edits!.get(ck) : row[col];
+                    const isEditing = editingCell === ck;
+                    const width = colWidths[col];
 
-      {/* Virtualized body */}
-      <div ref={scrollRef} className="flex-1 overflow-auto min-h-0">
-        <div style={{ height: virtualizer.getTotalSize(), position: "relative" }}>
-          <table
-            className="w-full border-collapse text-xs font-mono table-fixed"
-            style={{ position: "absolute", top: 0, left: 0 }}
-          >
-            <tbody>
-              {virtualizer.getVirtualItems().map((virtualRow) => {
-                const origIdx = sortedIndices[virtualRow.index];
-                const row = rows[origIdx];
-                return (
-                  <tr
-                    key={virtualRow.key}
-                    className={virtualRow.index % 2 === 0 ? "bg-background" : "bg-muted/40"}
-                    style={{
-                      position: "absolute",
-                      top: virtualRow.start,
-                      height: virtualRow.size,
-                      width: "100%",
-                      display: "table-row",
-                    }}
-                  >
-                    {showRowNumber && (
-                      <td className="border border-border px-2 py-1 text-center text-muted-foreground whitespace-nowrap w-[50px]">
-                        {rowNumberOffset + origIdx + 1}
+                    return (
+                      <td
+                        key={col}
+                        className={`border border-border px-2 py-1 whitespace-nowrap ${
+                          isEdited ? "bg-yellow-100 dark:bg-yellow-900/30" : ""
+                        }`}
+                        style={
+                          width
+                            ? { width: `${width}px`, minWidth: `${width}px`, maxWidth: `${width}px` }
+                            : { maxWidth: "400px" }
+                        }
+                        title={displayValue == null ? "NULL" : String(displayValue)}
+                        onDoubleClick={() => {
+                          if (!editable) return;
+                          setEditingCell(ck);
+                        }}
+                        onContextMenu={(e) => handleCellContextMenu(e, displayValue)}
+                      >
+                        {isEditing ? (
+                          <input
+                            ref={inputRef}
+                            className="w-full bg-transparent outline-none border-none p-0 m-0 text-xs font-mono"
+                            defaultValue={displayValue == null ? "" : String(displayValue)}
+                            onBlur={(e) => commitEdit(origIdx, col, e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") {
+                                commitEdit(origIdx, col, (e.target as HTMLInputElement).value);
+                              }
+                              if (e.key === "Escape") {
+                                setEditingCell(null);
+                              }
+                            }}
+                          />
+                        ) : displayValue == null ? (
+                          <span className="text-muted-foreground italic">NULL</span>
+                        ) : (
+                          <span className="truncate block">{String(displayValue)}</span>
+                        )}
                       </td>
-                    )}
-                    {columns.map((col) => {
-                      const ck = cellKey(origIdx, col);
-                      const isEdited = edits?.has(ck);
-                      const displayValue = isEdited ? edits!.get(ck) : row[col];
-                      const isEditing = editingCell === ck;
-
-                      return (
-                        <td
-                          key={col}
-                          className={`border border-border px-2 py-1 whitespace-nowrap max-w-[400px] ${
-                            isEdited ? "bg-yellow-100 dark:bg-yellow-900/30" : ""
-                          }`}
-                          title={displayValue == null ? "NULL" : String(displayValue)}
-                          onDoubleClick={() => {
-                            if (!editable) return;
-                            setEditingCell(ck);
-                          }}
-                          onContextMenu={(e) => handleCellContextMenu(e, displayValue)}
-                        >
-                          {isEditing ? (
-                            <input
-                              ref={inputRef}
-                              className="w-full bg-transparent outline-none border-none p-0 m-0 text-xs font-mono"
-                              defaultValue={displayValue == null ? "" : String(displayValue)}
-                              onBlur={(e) => commitEdit(origIdx, col, e.target.value)}
-                              onKeyDown={(e) => {
-                                if (e.key === "Enter") {
-                                  commitEdit(origIdx, col, (e.target as HTMLInputElement).value);
-                                }
-                                if (e.key === "Escape") {
-                                  setEditingCell(null);
-                                }
-                              }}
-                            />
-                          ) : displayValue == null ? (
-                            <span className="text-muted-foreground italic">NULL</span>
-                          ) : (
-                            <span className="truncate block max-w-[400px]">{String(displayValue)}</span>
-                          )}
-                        </td>
-                      );
-                    })}
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+                    );
+                  })}
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
       </div>
 
       {/* Cell context menu */}

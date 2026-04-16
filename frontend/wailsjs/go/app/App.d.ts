@@ -88,6 +88,8 @@ export function ExecuteRedisArgs(arg1:number,arg2:Array<string>,arg3:number):Pro
 
 export function ExecuteSQL(arg1:number,arg2:string,arg3:string):Promise<string>;
 
+export function ExecuteSQLPaged(arg1:number,arg2:string,arg3:string,arg4:number,arg5:number):Promise<string>;
+
 export function ExportData():Promise<string>;
 
 export function ExportToFile(arg1:string,arg2:backup_svc.ExportOptions):Promise<void>;

@@ -142,6 +142,10 @@ export function ExecuteSQL(arg1, arg2, arg3) {
   return window['go']['app']['App']['ExecuteSQL'](arg1, arg2, arg3);
 }
 
+export function ExecuteSQLPaged(arg1, arg2, arg3, arg4, arg5) {
+  return window['go']['app']['App']['ExecuteSQLPaged'](arg1, arg2, arg3, arg4, arg5);
+}
+
 export function ExportData() {
   return window['go']['app']['App']['ExportData']();
 }

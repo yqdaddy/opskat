@@ -136,6 +136,48 @@ func (a *App) ExecuteSQL(assetID int64, sqlText string, database string) (string
 	return ai.ExecuteSQL(ctx, db, sqlText)
 }
 
+// ExecuteSQLPaged 在指定数据库资产上执行分页 SQL 查询（SELECT/WITH 子查询包装）
+func (a *App) ExecuteSQLPaged(assetID int64, sqlText string, database string, page int, pageSize int) (string, error) {
+	asset, err := asset_svc.Asset().Get(a.langCtx(), assetID)
+	if err != nil {
+		return "", fmt.Errorf("资产不存在: %w", err)
+	}
+	if !asset.IsDatabase() {
+		return "", fmt.Errorf("资产不是数据库类型")
+	}
+	cfg, err := asset.GetDatabaseConfig()
+	if err != nil {
+		return "", fmt.Errorf("获取数据库配置失败: %w", err)
+	}
+	if database != "" {
+		cfg.Database = database
+	}
+	password, err := credential_resolver.Default().ResolveDatabasePassword(a.langCtx(), cfg)
+	if err != nil {
+		return "", fmt.Errorf("解析凭据失败: %w", err)
+	}
+
+	ctx, cancel := context.WithTimeout(a.langCtx(), 30*time.Second)
+	defer cancel()
+
+	db, tunnel, err := connpool.DialDatabase(ctx, asset, cfg, password, a.sshPool)
+	if err != nil {
+		return "", fmt.Errorf("连接数据库失败: %w", err)
+	}
+	defer func() {
+		if err := db.Close(); err != nil {
+			logger.Default().Warn("close db failed", zap.Error(err))
+		}
+		if tunnel != nil {
+			if err := tunnel.Close(); err != nil {
+				logger.Default().Warn("close tunnel failed", zap.Error(err))
+			}
+		}
+	}()
+
+	return ai.ExecuteSQLPaged(ctx, db, sqlText, page, pageSize)
+}
+
 // ExecuteRedis 在指定 Redis 资产上执行命令
 func (a *App) ExecuteRedis(assetID int64, command string, db int) (string, error) {
 	asset, err := asset_svc.Asset().Get(a.langCtx(), assetID)
