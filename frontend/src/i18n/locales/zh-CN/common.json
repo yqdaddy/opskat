@@ -608,6 +608,8 @@
     "split.horizontal": "水平分割",
     "panel.ai": "切换 AI 面板",
     "panel.sidebar": "切换资产列表",
+    "panel.switch": "切换 Assets / Tabs 面板",
+    "panel.filter": "过滤 Tabs",
     "page.home": "切换到首页",
     "page.settings": "切换到设置",
     "page.sshkeys": "切换到 SSH 密钥"
@@ -616,6 +618,21 @@
     "toggleSidebar": "切换资产列表",
     "hideSidebar": "隐藏工具条",
     "showSidebar": "显示工具条"
+  },
+  "sideTabs": {
+    "title": "打开的 Tabs",
+    "filterPlaceholder": "过滤 tab 名称...",
+    "clearFilter": "清除过滤",
+    "count": "{{count}} 个",
+    "countFiltered": "{{filtered}}/{{total}}",
+    "closeAll": "关闭全部",
+    "switchToTop": "切换到顶部 Tab 栏",
+    "switchToLeft": "切换到左侧 Tab 栏",
+    "assetsPanel": "Assets 面板",
+    "tabsPanel": "Tabs 面板",
+    "hidePanel": "隐藏左侧栏",
+    "emptyHint": "暂无匹配的 tab",
+    "noTabs": "没有打开的 tab"
   },
   "terminal": {
     "title": "终端",

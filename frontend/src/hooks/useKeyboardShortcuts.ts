@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { useTerminalStore } from "@/stores/terminalStore";
 import { useTabStore } from "@/stores/tabStore";
 import { useShortcutStore, matchShortcut } from "@/stores/shortcutStore";
+import { useLayoutStore } from "@/stores/layoutStore";
 
 interface ShortcutHandlers {
   onToggleAIPanel: () => void;
@@ -27,6 +28,16 @@ export function useKeyboardShortcuts({ onToggleAIPanel, onToggleSidebar }: Short
 
       const action = matchShortcut(e, shortcuts);
       if (!action) return;
+
+      // panel.filter 特殊处理：xterm 聚焦时透传，否则通过 store 触发 filter 面板
+      if (action === "panel.filter") {
+        const el = document.activeElement as HTMLElement | null;
+        if (el?.closest(".xterm")) return;
+        e.preventDefault();
+        e.stopPropagation();
+        useLayoutStore.getState().requestOpenFilter();
+        return;
+      }
 
       e.preventDefault();
       e.stopPropagation();
@@ -89,12 +100,24 @@ export function useKeyboardShortcuts({ onToggleAIPanel, onToggleSidebar }: Short
           }
           break;
         }
+        case "panel.switch": {
+          const st = useLayoutStore.getState();
+          st.switchPanel();
+          if (!st.leftPanelVisible) st.toggleVisible();
+          break;
+        }
         case "panel.ai":
           onToggleAIPanel();
           break;
-        case "panel.sidebar":
-          onToggleSidebar();
+        case "panel.sidebar": {
+          const layout = useLayoutStore.getState().tabBarLayout;
+          if (layout === "left") {
+            useLayoutStore.getState().toggleVisible();
+          } else {
+            onToggleSidebar();
+          }
           break;
+        }
         case "page.home": {
           const homeTab = tabs.find((t) => t.type === "terminal" || t.type === "info");
           if (homeTab) tabStore.activateTab(homeTab.id);
